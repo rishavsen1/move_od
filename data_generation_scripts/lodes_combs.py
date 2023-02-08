@@ -16,11 +16,13 @@ class Lodes_comb:
 
     print('Running lodes_comb.py')
 
-    def __init__(self, county_cbg,  data_path, ms_enabled) -> None:
+    def __init__(self, county_cbg,  data_path, ms_enabled, start_time, end_time, timedelta) -> None:
         self.county_cbg = county_cbg
         self.data_path =data_path
         self.ms_enabled = ms_enabled
-
+        self.start_time = start_time
+        self.end_time = end_time
+        self.timedelta = timedelta
 
     def intpt_func(row):
         return Point(row['INTPTLON'], row['INTPTLAT'])
@@ -55,6 +57,8 @@ class Lodes_comb:
         county_cbg['intpt'] = county_cbg[['INTPTLAT', 'INTPTLON']].apply(lambda p: Lodes_comb.intpt_func(p), axis=1)
         county_cbg = gpd.GeoDataFrame(county_cbg, geometry=gpd.GeoSeries.from_wkt(county_cbg.geometry))
         county_cbg.GEOID = county_cbg.GEOID.astype(str)
+        county_cbg['location'] = county_cbg.intpt.apply(lambda p: [p.y, p.x])
+
 
         #loading residential buildings
         res_build = pd.read_csv(f'{self.data_path}/county_residential_buildings.csv', index_col=0)
@@ -117,7 +121,7 @@ class Lodes_comb:
                         try:
                             res = ms_build[ms_build.GEOID == movement.h_geocode].sample(n=movement.total_jobs, random_state=42, replace=True).reset_index(drop=True)
                         except:
-                            res = county_cbg[county_cbg.GEOID == movement.h_geocode]
+                            res = county_cbg[county_cbg.GEOID == movement.h_geocode].reset_index(drop=True)
 
             com = com_build[com_build.GEOID == movement.w_geocode].reset_index(drop=True)
             if com.empty:
@@ -128,7 +132,7 @@ class Lodes_comb:
                         try:
                             com = ms_build[ms_build.GEOID == movement.w_geocode].sample(n=movement.total_jobs, random_state=42, replace=True).reset_index(drop=True)
                         except:
-                            com = county_cbg[county_cbg.GEOID == movement.w_geocode]
+                            com = county_cbg[county_cbg.GEOID == movement.w_geocode].reset_index(drop=True)
             r = res
             c = com
         

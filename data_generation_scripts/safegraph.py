@@ -11,9 +11,9 @@ import math
 pd.options.display.float_format = "{:.2f}".format
 
 
-COUNTY = '037'
-CITY = 'Nashville'
-county_cbg  = gpd.read_file('../data/Tennessee Census Block Groups/tl_2020_47_bg.shp')
+# COUNTY = '037'
+# CITY = 'Nashville'
+# county_cbg  = gpd.read_file('../data/Tennessee Census Block Groups/tl_2020_47_bg.shp')
 # safe_df =  pd.read_parquet(f'../data/safegraph.parquet/year=2021/region=TN/city={CITY}/', engine='pyarrow')
 
 class Safegraph:
@@ -145,7 +145,7 @@ class Safegraph:
         res3 = res2[res2.date_begin==exact_date].merge(self.county_cbg[['TRACTCE', 'GEOID', 'NAMELSAD']], left_on='home_cbg', right_on='GEOID').drop('GEOID', axis=1)
 
 
-        res2.to_csv(f'{self.data_path}/county_sg_jan_mar_21_reduced_cols.csv')
+        res2.to_csv(f'{self.data_path}/county_sg_first_chunk_of_five.csv')
         res3.to_csv(f'{self.data_path}/county_sg_week2_jan21_reduced_cols.csv')
 
 

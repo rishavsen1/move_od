@@ -4,7 +4,7 @@ import sys
 
 consoleLoggingLevel = logging.DEBUG
 
-loggerName = 'training_params'
+loggerName = 'logging'
 
 
 logger = logging.getLogger(loggerName)

@@ -6,16 +6,18 @@ from datetime  import datetime, timedelta
 import random
 import tqdm
 from tqdm.notebook import tqdm_notebook
-
+# from logger import logger
 from shapely.geometry import Point
 
 class Sg_combs:
 
-    def __init__(self, county_cbg, data_path, ms_enabled) -> None:
+    def __init__(self, county_cbg, data_path, ms_enabled, start_time, end_time, timedelta) -> None:
         self.county_cbg = county_cbg
         self.data_path =data_path
         self.ms_enabled = ms_enabled 
-        # self.safe_df = safe_df
+        self.start_time = start_time
+        self.end_time = end_time
+        self.timedelta = timedelta
 
     def intpt_func(row):
         return Point(row['INTPTLON'], row['INTPTLAT'])
@@ -33,6 +35,8 @@ class Sg_combs:
         county_cbg['intpt'] = county_cbg[['INTPTLAT', 'INTPTLON']].apply(lambda p: Sg_combs.intpt_func(p), axis=1)
         county_cbg = gpd.GeoDataFrame(county_cbg, geometry=gpd.GeoSeries.from_wkt(county_cbg.geometry))
         county_cbg.GEOID = county_cbg.GEOID.astype(str)
+        county_cbg['location'] = county_cbg.intpt.apply(lambda p: [p.y, p.x])
+
 
 
         #loading residential buildings
@@ -69,18 +73,18 @@ class Sg_combs:
             datetime_range(datetime(2016, 9, 1, 16), datetime(2016, 9, 1, 18, 10), 
             timedelta(minutes=15))]
 
+        #TODO: Add self.start_time (morning and evening), and self.end_time(morning and evening), self.timedelta to times_morning( or, times_evening)
 
         res_build.GEOID = res_build.GEOID.astype(str)
         com_build.GEOID = com_build.GEOID.astype(str)
 
 
         #input safegraph preprocessed data
-        sg = gpd.read_file(f'{self.data_path}/county_sg_jan_mar_reduced_cols.csv')
-
+        sg = gpd.read_file(f'{self.data_path}/county_sg_first_chunk_of_five.csv', index_col = 0, dtype={'frequency': np.float64})
+        sg['frequency'] = sg['frequency'].astype(float)
 
         #grouping home and work location movements to get total no of movements
         sg = sg.groupby(['home_cbg', 'poi_cbg']).agg(frequency=('frequency', sum), visits_monday=('visits_monday', sum), visits_tuesday=('visits_tuesday', sum), visits_wednesday=('visits_wednesday', sum), visits_thursday=('visits_thursday', sum), visits_friday=('visits_friday', sum), visits_saturday=('visits_saturday', sum), visits_sunday=('visits_sunday', sum) ).reset_index()
-
 
         #setting the random seed
         np.random.seed(42)
@@ -91,37 +95,39 @@ class Sg_combs:
         for idx, movement in tqdm_notebook(sg.iterrows(), total=sg.shape[0]):
 
 
-            res = res_build[res_build.GEOID == movement.h_geocode].reset_index(drop=True)
+            res = res_build[res_build.GEOID == movement.home_cbg].reset_index(drop=True)
             if res.empty:
                 try:
-                    res = ms_build[ms_build.GEOID == movement.h_geocode].sample(n=movement.total_jobs, random_state=42).reset_index(drop=True)
+                    res = ms_build[ms_build.GEOID == movement.home_cbg].sample(n=movement.total_jobs, random_state=42).reset_index(drop=True)
                 except:
                     if self.ms_enabled:
                         try:
-                            res = ms_build[ms_build.GEOID == movement.h_geocode].sample(n=movement.total_jobs, random_state=42, replace=True).reset_index(drop=True)
+                            res = ms_build[ms_build.GEOID == movement.home_cbg].sample(n=movement.total_jobs, random_state=42, replace=True).reset_index(drop=True)
                         except:
-                            res = county_cbg[county_cbg.GEOID == movement.h_geocode]
+                            res = county_cbg[county_cbg.GEOID == movement.home_cbg].reset_index(drop=True)
 
-            com = com_build[com_build.GEOID == movement.w_geocode].reset_index(drop=True)
+            com = com_build[com_build.GEOID == movement.poi_cbg].reset_index(drop=True)
             if com.empty:
                 try:
-                    com = ms_build[ms_build.GEOID == movement.w_geocode].sample(n=movement.total_jobs, random_state=42).reset_index(drop=True)
+                    com = ms_build[ms_build.GEOID == movement.poi_cbg].sample(n=movement.total_jobs, random_state=42).reset_index(drop=True)
                 except:
                     if self.ms_enabled:
                         try:
-                            com = ms_build[ms_build.GEOID == movement.w_geocode].sample(n=movement.total_jobs, random_state=42, replace=True).reset_index(drop=True)
+                            com = ms_build[ms_build.GEOID == movement.poi_cbg].sample(n=movement.total_jobs, random_state=42, replace=True).reset_index(drop=True)
                         except:
-                            com = county_cbg[county_cbg.GEOID == movement.w_geocode]
-            r = res
-            c = com
+                            com = county_cbg[county_cbg.GEOID == movement.poi_cbg].reset_index(drop=True)
 
-            for freq in range(int(movement.frequency/12)):
+            r = res.reset_index(drop=True)
+            c = com.reset_index(drop=True)
+            
+            # print(idx, movement, f'{movement.frequency}')
+            for freq in range(int(float(movement.frequency))):
 
                 if c.empty:
                     c = com
                 if r.empty:
                     r = res
-                
+                                
                 rand_r = random.randrange(r.shape[0])
                 rand_c = random.randrange(c.shape[0])
                 r_df = r.iloc[rand_r]
