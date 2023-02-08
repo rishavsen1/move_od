@@ -27,28 +27,28 @@ class Sg_combs:
         return Point(row.work_loc_lon, row.work_loc_lat)
 
 
-    def genrate_combs(self):
+    def generate_combs(self):
     #loading geometry data
-        county_cbg = pd.read_csv('../data/county_cbg.csv')
+        county_cbg = pd.read_csv(f'{self.data_path}/county_cbg.csv')
         county_cbg['intpt'] = county_cbg[['INTPTLAT', 'INTPTLON']].apply(lambda p: Sg_combs.intpt_func(p), axis=1)
         county_cbg = gpd.GeoDataFrame(county_cbg, geometry=gpd.GeoSeries.from_wkt(county_cbg.geometry))
         county_cbg.GEOID = county_cbg.GEOID.astype(str)
 
 
         #loading residential buildings
-        res_build = pd.read_csv('../data/ham_residential_buildings2.csv', index_col=0)
+        res_build = pd.read_csv(f'{self.data_path}/county_residential_buildings.csv', index_col=0)
         res_build = gpd.GeoDataFrame(res_build, geometry=gpd.GeoSeries.from_wkt(res_build.geometry))
         res_build['location'] = res_build.geometry.apply(lambda p: [p.y, p.x])
 
         #loading work buildings
-        com_build = pd.read_csv('../data/work_loc_poi_com_civ.csv', index_col=0)
+        com_build = pd.read_csv(f'{self.data_path}/county_work_loc_poi_com_civ.csv', index_col=0)
         com_build = gpd.GeoDataFrame(com_build, geometry=gpd.GeoSeries.from_wkt(com_build.geometry))
         com_build['location'] = com_build.geometry.apply(lambda p: [p.y, p.x])
         com_build = com_build.reset_index()
         com_build.GEOID = com_build.GEOID.astype(str)
 
         #loading all buildings (MS dataset)
-        ms_build = pd.read_csv('../data/ham_buildings_MS.csv')
+        ms_build = pd.read_csv(f'{self.data_path}/county_buildings_MS.csv')
         ms_build = gpd.GeoDataFrame(ms_build, geometry=gpd.GeoSeries.from_wkt(ms_build.geo_centers))
         ms_build.GEOID = ms_build.GEOID.astype(str)
         ms_build['location'] = ms_build.geometry.apply(lambda p: [p.y, p.x])
