@@ -48,7 +48,7 @@ Install Streamlit `pip install streamlit` and run the command:
 streamlit run data_generation_scripts\front_app.py
 ```
 
-Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced inthe chosen output folder.
+Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced in the chosen output folder.
 
 ## Explanation of the generated OD data
 
