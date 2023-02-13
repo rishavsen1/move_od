@@ -38,6 +38,15 @@ There are a few assumptions made to help in the process of sampleing the data:
 
 For example if an OD pair has 50 people travelling among them, then we sample 50 home and 50 work locations and randomly choose 50 start and return times in the manner described. 
 
+## Running the pipeline
+
+Install Streamlit `pip install streamlit` and run the command:
+```
+streamlit run data_generation_scripts\front_app.py
+```
+
+Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced inthe chosen output folder.
+
 ## Explanation of the generated OD data
 
 The generated data has been converted to parquet and is available at the following locations
