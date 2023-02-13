@@ -1,4 +1,4 @@
-# chattanooga-od-sample
+# Move-OD
 
 The geographic area under consideration is the Hamilton county, Tennessee. The county is further divided into census tracts(larger, poor resolution) and census block groups (CBGs) (smaller, better resolution). We find the movement matrix of people travelling for jobs (LODES), or general purposes (Safegraph).
 
