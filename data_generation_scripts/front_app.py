@@ -1,5 +1,7 @@
 import streamlit as st
 import os
+import datetime
+import streamlit as st
 
 import lodes_read
 import safegraph
@@ -29,6 +31,15 @@ for lodes in range(number_lodes):
 
 choice = st.multiselect('Choose type of data to generate for:', ['LODES', 'Safegraph'])
 
+timedelta = st.number_input('Select a value of Timedelta (in seconds)', value=15)
+
+times = st.number_input('Choose number of slots to generate for:',  value = 2, min_value=0, max_value=10)
+time_start = []
+time_end = []
+for time in range(times):
+    time_start.append(st.time_input(f"Enter start time for slot {time+1}", datetime.time(7, 00)))
+    time_end.append(st.time_input(f"Enter end time for slot {time+1}", datetime.time(9, 00)))
+
 safe_df = ''
 sg_enabled = False
 if 'Safegraph' in choice:
@@ -56,24 +67,24 @@ if begin:
     with st.spinner('In Progress...'):
         lodes_read = lodes_read.Lodes_gen(county, county_lodes_paths, county_cbg, data_path)
         locations = locations_OSM_SG.locations_OSM_SG(county, area, county_cbg, sg_enabled, data_path)
-        lodes_combs = lodes_combs.Lodes_comb(county_cbg, data_path, ms_enabled)
-        sg_combs = sg_combs.Sg_combs(county_cbg, data_path, ms_enabled)
+        lodes_combs = lodes_combs.Lodes_comb(county_cbg, data_path, ms_enabled, timedelta, time_start, time_end)
+        sg_combs = sg_combs.Sg_combs(county_cbg, data_path, ms_enabled, timedelta, time_start, time_end)
 
-        lodes_read.generate()
-        st.success('LODES data filtered')
+        # lodes_read.generate()
+        # st.success('LODES data filtered')
 
-        if sg_enabled:
-            safegraph = safegraph.Safegraph(county, city, county_cbg, safe_df, data_path)
-            safegraph.filter_SG()
-            st.success('Safegraph data filtered')
+        # if sg_enabled:
+        #     safegraph = safegraph.Safegraph(county, city, county_cbg, safe_df, data_path)
+        #     safegraph.filter_SG()
+        #     st.success('Safegraph data filtered')
 
-        if ms_enabled:
-            ms_builds = read_ms_buildings.MS_Buildings(county, county_cbg, builds, data_path)
-            ms_builds.buildings()
-            st.success('MS Buildings data filtered')
+        # if ms_enabled:
+        #     ms_builds = read_ms_buildings.MS_Buildings(county, county_cbg, builds, data_path)
+        #     ms_builds.buildings()
+        #     st.success('MS Buildings data filtered')
 
-        locations.find_locations_OSM()  
-        st.success('Locations generated')   
+        # locations.find_locations_OSM()  
+        # st.success('Locations generated')   
 
         if 'LODES' in choice:
             lodes_combs.generate_combs()
