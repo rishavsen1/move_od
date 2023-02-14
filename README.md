@@ -1,6 +1,6 @@
-# chattanooga-od-sample
+# Move-OD
 
-The geographic area under consideration is the Hamilton county, Tennessee. The county is further divided into census tracts(larger, poor resolution) and census block groups (CBGs) (smaller, better resolution). We find the movement matrix of people travelling for jobs (LODES), or general purposes (Safegraph).
+We can generate origin-destination (OD) pairs for a given county or city, from the releveant datasets about the region. The geographic areas are divided into census tracts(larger, poor resolution) and census block groups (CBGs) (smaller, better resolution). We find the movement matrix of people travelling for jobs (LODES), or general purposes (Safegraph).
 
 ## The data
 
@@ -37,6 +37,18 @@ There are a few assumptions made to help in the process of sampleing the data:
 3. The return time is sampled randomly from 4PM to 6PM (at 15min intervals)
 
 For example if an OD pair has 50 people travelling among them, then we sample 50 home and 50 work locations and randomly choose 50 start and return times in the manner described. 
+
+## Running the pipeline
+
+(This was run on python 3.9 on Ubuntu machine)
+Install the requirements using `pip install -r requirements.txt`.
+
+Install Streamlit `pip install streamlit` and change to the run the command:
+```
+streamlit run data_generation_scripts\front_app.py
+```
+
+Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced in the chosen output folder.
 
 ## Explanation of the generated OD data
 

@@ -17,12 +17,10 @@ class Lodes_comb:
 
     print('Running lodes_comb.py')
 
-    def __init__(self, county_cbg,  data_path, ms_enabled, start_time, end_time, timedelta, time_start, time_end) -> None:
+    def __init__(self, county_cbg,  data_path, ms_enabled,timedelta, time_start, time_end) -> None:
         self.county_cbg = county_cbg
         self.data_path =data_path
         self.ms_enabled = ms_enabled
-        self.start_time = start_time
-        self.end_time = end_time
         self.timedelta = timedelta
         self.time_start = time_start
         self.time_end = time_end
@@ -93,7 +91,7 @@ class Lodes_comb:
         #generating array of start and return times (in 15 min intervals)
         times=[]
         for time in len(self.time_start):
-            times = times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
+            times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
                 datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second), 
                 timedelta(seconds=self.timedelta))])
             
@@ -157,7 +155,7 @@ class Lodes_comb:
                 c = c.drop([rand_c]).reset_index(drop=True)
                 
                 for time in (times):
-                    time_slot[i].append(np.random.choice(time, size=1, replace=True))                
+                    time_slot[time].append(np.random.choice(time, size=1, replace=True))                
 
                 # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
                 # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
@@ -173,9 +171,9 @@ class Lodes_comb:
                 temp.loc[job, 'work_loc_lon'] = c_df.location[1]
                 
                 for time in range(len(times)):
-                    temp.loc[freq, f'time_{time}'] = time_slot[i][0]
-                    temp.loc[freq, f'time_{time}_secs'] = (time_slot[i][0] - datetime(1900, 1, 1)).total_seconds()
-                    temp.loc[freq, f'time_{time}_str'] = time_slot[i][0].strftime('%H:%M')
+                    temp.loc[freq, f'time_{time}'] = time_slot[time][0]
+                    temp.loc[freq, f'time_{time}_secs'] = (time_slot[time][0] - datetime(1900, 1, 1)).total_seconds()
+                    temp.loc[freq, f'time_{time}_str'] = time_slot[time][0].strftime('%H:%M')
 
                 
                 # temp.loc[job, 'go_time'] = time_slot1[0].time()
