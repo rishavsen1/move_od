@@ -28,6 +28,11 @@ class Sg_combs:
     def func_work_pt(row):
         return Point(row.work_loc_lon, row.work_loc_lat)
 
+    def datetime_range(start, end, delta):
+        current = start
+        while current < end:
+            yield current
+            current += delta
 
     def generate_combs(self):
     #loading geometry data
@@ -58,17 +63,13 @@ class Sg_combs:
         ms_build['location'] = ms_build.geometry.apply(lambda p: [p.y, p.x])
 
 
-        def datetime_range(start, end, delta):
-            current = start
-            while current < end:
-                yield current
-                current += delta
+  
 
         #generating array of start and return times (in 15 min intervals)
         times=[]
         for time in range(len(self.time_start)):
             times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
-                datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
+                Sg_combs.datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
                 timedelta(seconds=self.timedelta))])
 
         # times_evening = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
