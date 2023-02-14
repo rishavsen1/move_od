@@ -90,7 +90,7 @@ class Lodes_comb:
 
         #generating array of start and return times (in 15 min intervals)
         times=[]
-        for time in len(self.time_start):
+        for time in range(len(self.time_start)):
             times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
                 datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second), 
                 timedelta(seconds=self.timedelta))])
