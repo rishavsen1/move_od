@@ -9,20 +9,21 @@ import tqdm
 from tqdm.notebook import tqdm_notebook
 from shapely.geometry import Point
 from datetime  import datetime, timedelta
-
+import datetime
+import streamlit as st
 
 
 class Lodes_comb:
 
     print('Running lodes_comb.py')
 
-    def __init__(self, county_cbg,  data_path, ms_enabled, start_time, end_time, timedelta) -> None:
+    def __init__(self, county_cbg,  data_path, ms_enabled,timedelta, time_start, time_end) -> None:
         self.county_cbg = county_cbg
         self.data_path =data_path
         self.ms_enabled = ms_enabled
-        self.start_time = start_time
-        self.end_time = end_time
         self.timedelta = timedelta
+        self.time_start = time_start
+        self.time_end = time_end
 
     def intpt_func(row):
         return Point(row['INTPTLON'], row['INTPTLAT'])
@@ -88,12 +89,15 @@ class Lodes_comb:
         county_lodes = gpd.GeoDataFrame(county_lodes)
 
         #generating array of start and return times (in 15 min intervals)
-        times_morning = [datetime.strptime(dt.strftime('%H%M%S'), '%H%M%S') for dt in 
-            Lodes_comb.datetime_range(datetime(2021, 9, 1, 7), datetime(2021, 9, 1, 9, 10), 
-            timedelta(seconds=15))]
-        times_evening = [datetime.strptime(dt.strftime('%H%M%S'), '%H%M%S') for dt in 
-            Lodes_comb.datetime_range(datetime(2021, 9, 1, 16), datetime(2021, 9, 1, 18, 10), 
-            timedelta(seconds=15))]
+        times=[]
+        for time in range(len(self.time_start)):
+            times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
+                Lodes_comb.datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
+                timedelta(seconds=self.timedelta))])
+            
+        # times_evening = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
+            #     datetime_range(datetime(2016, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2016, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second), 
+            #     timedelta(seconds=self.timedelta))]
 
 
 
@@ -150,8 +154,11 @@ class Lodes_comb:
                 r = r.drop([rand_r]).reset_index(drop=True)
                 c = c.drop([rand_c]).reset_index(drop=True)
                 
-                time_slot1 = np.random.choice(times_morning, size=1, replace=True)
-                time_slot2 = np.random.choice(times_evening, size=1, replace=True)
+                for time in (times):
+                    time_slot[time].append(np.random.choice(time, size=1, replace=True))                
+
+                # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
+                # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
 
                 temp = gpd.GeoDataFrame()
 
@@ -162,12 +169,19 @@ class Lodes_comb:
                 temp.loc[job, 'home_loc_lon'] = r_df.location[1]
                 temp.loc[job, 'work_loc_lat'] = c_df.location[0]
                 temp.loc[job, 'work_loc_lon'] = c_df.location[1]
-                temp.loc[job, 'go_time'] = time_slot1[0].time()
-                temp.loc[job, 'go_time_secs'] = (time_slot1[0] - datetime(1900, 1, 1)).total_seconds()
-                temp.loc[job, 'go_time_str'] = time_slot1[0].strftime('%H:%M:%S')
-                temp.loc[job, 'return_time'] = time_slot2[0].time()         
-                temp.loc[job, 'return_time_secs'] = (time_slot2[0] - datetime(1900, 1, 1)).total_seconds()
-                temp.loc[job, 'return_time_str'] = time_slot2[0].strftime('%H:%M:%S')
+                
+                for time in range(len(times)):
+                    temp.loc[freq, f'time_{time}'] = time_slot[time][0]
+                    temp.loc[freq, f'time_{time}_secs'] = (time_slot[time][0] - datetime(1900, 1, 1)).total_seconds()
+                    temp.loc[freq, f'time_{time}_str'] = time_slot[time][0].strftime('%H:%M')
+
+                
+                # temp.loc[job, 'go_time'] = time_slot1[0].time()
+                # temp.loc[job, 'go_time_secs'] = (time_slot1[0] - datetime(1900, 1, 1)).total_seconds()
+                # temp.loc[job, 'go_time_str'] = time_slot1[0].strftime('%H:%M:%S')
+                # temp.loc[job, 'return_time'] = time_slot2[0].time()         
+                # temp.loc[job, 'return_time_secs'] = (time_slot2[0] - datetime(1900, 1, 1)).total_seconds()
+                # temp.loc[job, 'return_time_str'] = time_slot2[0].strftime('%H:%M:%S')
 
                 prob_matrix = prob_matrix.append(temp, ignore_index=True)
             

@@ -11,13 +11,13 @@ from shapely.geometry import Point
 
 class Sg_combs:
 
-    def __init__(self, county_cbg, data_path, ms_enabled, start_time, end_time, timedelta) -> None:
+    def __init__(self, county_cbg, data_path, ms_enabled, timedelta, time_start, time_end) -> None:
         self.county_cbg = county_cbg
         self.data_path =data_path
         self.ms_enabled = ms_enabled 
-        self.start_time = start_time
-        self.end_time = end_time
         self.timedelta = timedelta
+        self.time_start = time_start
+        self.time_end = time_end
 
     def intpt_func(row):
         return Point(row['INTPTLON'], row['INTPTLAT'])
@@ -28,6 +28,11 @@ class Sg_combs:
     def func_work_pt(row):
         return Point(row.work_loc_lon, row.work_loc_lat)
 
+    def datetime_range(start, end, delta):
+        current = start
+        while current < end:
+            yield current
+            current += delta
 
     def generate_combs(self):
     #loading geometry data
@@ -58,20 +63,18 @@ class Sg_combs:
         ms_build['location'] = ms_build.geometry.apply(lambda p: [p.y, p.x])
 
 
-        def datetime_range(start, end, delta):
-            current = start
-            while current < end:
-                yield current
-                current += delta
-
+  
 
         #generating array of start and return times (in 15 min intervals)
-        times_morning = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
-            datetime_range(datetime(2016, 9, 1, 7), datetime(2016, 9, 1, 9, 10), 
-            timedelta(minutes=15))]
-        times_evening = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
-            datetime_range(datetime(2016, 9, 1, 16), datetime(2016, 9, 1, 18, 10), 
-            timedelta(minutes=15))]
+        times=[]
+        for time in range(len(self.time_start)):
+            times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
+                Sg_combs.datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
+                timedelta(seconds=self.timedelta))])
+
+        # times_evening = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
+        #     datetime_range(datetime(2016, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2016, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second), 
+        #     timedelta(seconds=self.timedelta))]
 
         #TODO: Add self.start_time (morning and evening), and self.end_time(morning and evening), self.timedelta to times_morning( or, times_evening)
 
@@ -134,9 +137,13 @@ class Sg_combs:
                 c_df = c.iloc[rand_c]
                 r = r.drop([rand_r]).reset_index(drop=True)
                 c = c.drop([rand_c]).reset_index(drop=True)
-
-                time_slot1 = np.random.choice(times_morning, size=1, replace=True)
-                time_slot2 = np.random.choice(times_evening, size=1, replace=True)
+                
+                time_slot = []
+                for time in (times):
+                    time_slot.append(np.random.choice(time, size=1, replace=True))
+                
+                # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
+                # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
 
                 temp = gpd.GeoDataFrame()
 
@@ -147,12 +154,18 @@ class Sg_combs:
                 temp.loc[freq, 'home_loc_lon'] = r_df.location[1]
                 temp.loc[freq, 'work_loc_lat'] = c_df.location[0]
                 temp.loc[freq, 'work_loc_lon'] = c_df.location[1]
-                temp.loc[freq, 'go_time'] = time_slot1[0]
-                temp.loc[freq, 'go_time_secs'] = (time_slot1[0] - datetime(1900, 1, 1)).total_seconds()
-                temp.loc[freq, 'go_time_str'] = time_slot1[0].strftime('%H:%M')
-                temp.loc[freq, 'return_time'] = time_slot2[0]
-                temp.loc[freq, 'return_time_secs'] = (time_slot2[0] - datetime(1900, 1, 1)).total_seconds()
-                temp.loc[freq, 'return_time_str'] = time_slot2[0].strftime('%H:%M')
+
+                for time in range(len(times)):
+                    temp.loc[freq, f'time_{time}'] = time_slot[time][0]
+                    temp.loc[freq, f'time_{time}_secs'] = (time_slot[time][0] - datetime(1900, 1, 1)).total_seconds()
+                    temp.loc[freq, f'time_{time}_str'] = time_slot[time][0].strftime('%H:%M')
+
+                # temp.loc[freq, 'go_time'] = time_slot1[0]
+                # temp.loc[freq, 'go_time_secs'] = (time_slot1[0] - datetime(1900, 1, 1)).total_seconds()
+                # temp.loc[freq, 'go_time_str'] = time_slot1[0].strftime('%H:%M')
+                # temp.loc[freq, 'return_time'] = time_slot2[0]
+                # temp.loc[freq, 'return_time_secs'] = (time_slot2[0] - datetime(1900, 1, 1)).total_seconds()
+                # temp.loc[freq, 'return_time_str'] = time_slot2[0].strftime('%H:%M')
 
                 # temp.loc[job, 'home_geom'] = Point([r_df.location[1], r_df.location[0]])
                 prob_matrix_sg = prob_matrix_sg.append(temp, ignore_index=True)
