@@ -45,7 +45,7 @@ class Safegraph:
         # reference : # https://docs.safegraph.com/docs/places
 
         # l= ['category_tags', 'naics_code', 'date_begin','distance_from_home', 'includes_parking_lot','location_name', 'poi_cbg','open_hours','raw_visit_counts', 'related_same_day_brand','related_same_week_brand','sub_category', 'top_category','visits_by_day','visits_friday','visits_saturday', 'visits_sunday', 'visits_monday', 'visits_tuesday', 'visits_wednesday', 'visits_thursday', 'polygon_wkt', 'latitude', 'longitude']
-        l= ['category_tags', 'naics_code', 'date_begin','distance_from_home', 'includes_parking_lot','location_name', 'poi_cbg','open_hours','raw_visit_counts', 'sub_category', 'top_category','visits_by_day','visits_friday','visits_saturday', 'visits_sunday', 'visits_monday', 'visits_tuesday', 'visits_wednesday', 'visits_thursday', 'latitude', 'longitude']
+        l= ['category_tags', 'naics_code', 'date_begin','distance_from_home', 'includes_parking_lot','location_name', 'median_dwell', 'poi_cbg','open_hours','raw_visit_counts', 'sub_category', 'top_category','visits_by_day','visits_friday','visits_saturday', 'visits_sunday', 'visits_monday', 'visits_tuesday', 'visits_wednesday', 'visits_thursday', 'latitude', 'longitude']
 
         df = self.safe_df.drop(self.safe_df.columns.difference(['visitor_home_aggregation', 'visitor_home_cbgs']+ l), 1)
         df['poi_cbg'] = df['poi_cbg'].apply(lambda x: str(x).split('.')[0])
@@ -62,8 +62,8 @@ class Safegraph:
         # x
         # x.columns
 
-        for keys in t[0].groups:
-            print (keys)
+        # for keys in t[0].groups:
+        #     print (keys)
 
         res = pd.DataFrame()
 
@@ -82,6 +82,7 @@ class Safegraph:
                 temp['distance_from_home'] = x['distance_from_home'][i]
                 temp['includes_parking_lot'] = x['includes_parking_lot'][i]
                 temp['location_name'] = x['location_name'][i]
+                temp['median_dwell'] = x['median_dwell'][i]
                 temp['open_hours'] = x['open_hours'][i]
                 temp['raw_visit_counts'] = x['raw_visit_counts'][i]
                 # temp['related_same_day_brand'] = x['related_same_day_brand'][i]
@@ -107,7 +108,7 @@ class Safegraph:
             y = y[y['home_cbg'].isin(county_cbgs)].reset_index(drop = True)
             # print('y_filt', y)
             # y = y.groupby(['date_begin', 'category_tags', 'naics_code', 'distance_from_home', 'includes_parking_lot', 'location_name', 'open_hours', 'raw_visit_counts', 'related_same_day_brand', 'related_same_week_brand', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'polygon_wkt', 'home_cbg', 'poi_cbg', 'latitude', 'longitude']).agg({'frequency': sum}).reset_index()
-            y = y.groupby(['date_begin', 'category_tags', 'naics_code', 'distance_from_home', 'includes_parking_lot', 'location_name', 'open_hours', 'raw_visit_counts', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'home_cbg', 'poi_cbg', 'latitude', 'longitude']).agg({'frequency': sum}).reset_index()
+            y = y.groupby(['date_begin', 'category_tags', 'naics_code', 'distance_from_home', 'includes_parking_lot', 'location_name', 'median_dwell', 'open_hours', 'raw_visit_counts', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'home_cbg', 'poi_cbg', 'latitude', 'longitude']).agg({'frequency': sum}).reset_index()
             res = res.append(y)
             res = res.reset_index(drop = True)
 
@@ -120,7 +121,7 @@ class Safegraph:
         t = res.groupby('home_cbg').first().reset_index()
         t.home_cbg = t.home_cbg
         # .apply(lambda x: str(math.trunc(x)))
-        t.merge(self.county_cbg, left_on='home_cbg', right_on='GEOID').to_csv(f'{self.data_path}/sg_cbgs.csv', index=False)
+        t.merge(self.county_cbg, left_on='home_cbg', right_on='GEOID').to_csv(f'{self.data_path}/sg_home_cbgs.csv', index=False)
 
         t = res.groupby('poi_cbg').first().reset_index()
         t.poi_cbg = t.poi_cbg
