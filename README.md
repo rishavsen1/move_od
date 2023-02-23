@@ -43,9 +43,10 @@ For example if an OD pair has 50 people travelling among them, then we sample 50
 (This was run on python 3.9 on Ubuntu machine)
 Install the requirements using `pip install -r requirements.txt`.
 
-Install Streamlit `pip install streamlit` and change to the run the command:
+Install Streamlit `pip install streamlit` and run the command:
+
 ```
-streamlit run data_generation_scripts\front_app.py
+streamlit run data_generation_scripts/front_app.py
 ```
 
 Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced in the chosen output folder.
