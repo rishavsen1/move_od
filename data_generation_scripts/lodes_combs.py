@@ -9,15 +9,12 @@ import tqdm
 from tqdm.notebook import tqdm_notebook
 from shapely.geometry import Point
 from datetime  import datetime, timedelta
-import datetime
 import streamlit as st
-
 
 class Lodes_comb:
 
-    print('Running lodes_comb.py')
-
     def __init__(self, county_cbg,  data_path, ms_enabled,timedelta, time_start, time_end) -> None:
+        print('Initalizing lodes_comb.py')
         self.county_cbg = county_cbg
         self.data_path =data_path
         self.ms_enabled = ms_enabled
@@ -60,12 +57,12 @@ class Lodes_comb:
         county_cbg.GEOID = county_cbg.GEOID.astype(str)
         county_cbg['location'] = county_cbg.intpt.apply(lambda p: [p.y, p.x])
 
-
         #loading residential buildings
         res_build = pd.read_csv(f'{self.data_path}/county_residential_buildings.csv', index_col=0)
         res_build = gpd.GeoDataFrame(res_build, geometry=gpd.GeoSeries.from_wkt(res_build.geometry))
         res_build['location'] = res_build.geometry.apply(lambda p: [p.y, p.x])
-
+        res_build.GEOID = res_build.GEOID.astype(str)
+        
         #loading work buildings
         com_build = pd.read_csv(f'{self.data_path}/county_work_loc_poi_com_civ.csv', index_col=0)
         com_build = gpd.GeoDataFrame(com_build, geometry=gpd.GeoSeries.from_wkt(com_build.geometry))
@@ -81,9 +78,6 @@ class Lodes_comb:
             ms_build.GEOID = ms_build.GEOID.astype(str)
             ms_build['location'] = ms_build.geometry.apply(lambda p: [p.y, p.x])
 
-        # print(county_lodes.head())
-        # print(county_cbg[['GEOID', 'geometry']].head())
-        
         #aggregating total jobs for each combination of home and work cbg 
         county_lodes = county_lodes.groupby(['h_geocode', 'w_geocode']).agg(total_jobs=('total_jobs', sum)).reset_index().merge(county_cbg[['GEOID', 'geometry']], left_on='h_geocode', right_on='GEOID').rename({'geometry':'home_geom'}, axis=1).drop('GEOID', axis=1).merge(county_cbg[['GEOID', 'geometry']], left_on='w_geocode', right_on='GEOID').rename({'geometry':'work_geom'}, axis=1).drop('GEOID', axis=1).sort_values('total_jobs', ascending=False).reset_index(drop=True)
         county_lodes = gpd.GeoDataFrame(county_lodes)
@@ -92,21 +86,14 @@ class Lodes_comb:
         times=[]
         for time in range(len(self.time_start)):
             times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
-                Lodes_comb.datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
+                Lodes_comb.datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), 
+                                          datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
                 timedelta(seconds=self.timedelta))])
             
         # times_evening = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
             #     datetime_range(datetime(2016, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2016, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second), 
             #     timedelta(seconds=self.timedelta))]
-
-
-
-        # (times_morning[5] - datetime(1900, 1, 1)).total_seconds()
-        # times_morning[1].strftime('%H:%M:%S')
-
-        res_build.GEOID = res_build.GEOID.astype(str)
-        com_build.GEOID = com_build.GEOID.astype(str)
-
+       
         #setting the random seed
         np.random.seed(42)
         random.seed(42)
@@ -154,8 +141,9 @@ class Lodes_comb:
                 r = r.drop([rand_r]).reset_index(drop=True)
                 c = c.drop([rand_c]).reset_index(drop=True)
                 
-                for time in (times):
-                    time_slot[time].append(np.random.choice(time, size=1, replace=True))                
+                time_slot = [[]]
+                for time in range(len(times)):
+                    time_slot[time].append(np.random.choice(times[time], size=1, replace=True))                
 
                 # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
                 # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
@@ -171,9 +159,9 @@ class Lodes_comb:
                 temp.loc[job, 'work_loc_lon'] = c_df.location[1]
                 
                 for time in range(len(times)):
-                    temp.loc[freq, f'time_{time}'] = time_slot[time][0]
-                    temp.loc[freq, f'time_{time}_secs'] = (time_slot[time][0] - datetime(1900, 1, 1)).total_seconds()
-                    temp.loc[freq, f'time_{time}_str'] = time_slot[time][0].strftime('%H:%M')
+                    temp.loc[job, f'time_{time}'] = time_slot[time][0][0].time()
+                    temp.loc[job, f'time_{time}_secs'] = (time_slot[time][0][0] - datetime(1900, 1, 1)).total_seconds()
+                    temp.loc[job, f'time_{time}_str'] = time_slot[time][0][0].strftime('%H:%M')
 
                 
                 # temp.loc[job, 'go_time'] = time_slot1[0].time()

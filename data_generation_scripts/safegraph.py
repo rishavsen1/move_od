@@ -18,9 +18,9 @@ pd.options.display.float_format = "{:.2f}".format
 
 class Safegraph:
 
-    print('Running safegraph.py')
 
     def __init__(self, county, city, county_cbg, safe_df, data_path):
+        print('Initliazing safegraph.py')
         self.COUNTY = county
         self.county_cbg = gpd.read_file(county_cbg)
         self.CITY = city
@@ -100,23 +100,17 @@ class Safegraph:
                 # temp['polygon_wkt'] = x['polygon_wkt'][i]
                 temp['latitude'] = x['latitude'][i]
                 temp['longitude'] = x['longitude'][i]
+                print(temp)
                 y = y.append(temp)
             y['home_cbg'] = pd.to_numeric(y['home_cbg'], errors='coerce')
             y = y.dropna(subset=['home_cbg'])
             y['home_cbg'] =y['home_cbg'].apply(lambda x: str(x).split('.')[0])
-            # print('y', y)
             y = y[y['home_cbg'].isin(county_cbgs)].reset_index(drop = True)
-            # print('y_filt', y)
+
             # y = y.groupby(['date_begin', 'category_tags', 'naics_code', 'distance_from_home', 'includes_parking_lot', 'location_name', 'open_hours', 'raw_visit_counts', 'related_same_day_brand', 'related_same_week_brand', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'polygon_wkt', 'home_cbg', 'poi_cbg', 'latitude', 'longitude']).agg({'frequency': sum}).reset_index()
             y = y.groupby(['date_begin', 'category_tags', 'naics_code', 'distance_from_home', 'includes_parking_lot', 'location_name', 'median_dwell', 'open_hours', 'raw_visit_counts', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'home_cbg', 'poi_cbg', 'latitude', 'longitude']).agg({'frequency': sum}).reset_index()
             res = res.append(y)
             res = res.reset_index(drop = True)
-
-        # res.head()
-
-        # county_cbg = pd.read_csv('../data/county_cbg.csv')
-        # county_cbg.GEOID = county_cbg.GEOID.astype(str)
-        # county_cbg.head()
 
         t = res.groupby('home_cbg').first().reset_index()
         t.home_cbg = t.home_cbg

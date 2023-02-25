@@ -11,9 +11,9 @@ import pandas as pd
 
 class Lodes_gen:
 
-    print('\n Running lodes_read.py')
     
     def __init__(self, county, county_lodes_paths, county_cbg, data_path):
+        print('Initliazing lodes_read.py')
         self.COUNTY = county
         self.county_lodes_paths = county_lodes_paths
         self.county_cbg = county_cbg

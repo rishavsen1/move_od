@@ -9,9 +9,9 @@ import pandas as pd
 
 class MS_Buildings:
 
-    print("Running read_ms_buildings.py")
 
     def __init__(self, county, county_cbg, builds, data_path) -> None:
+        print("Initliazing read_ms_buildings.py")
         self.COUNTY = county
         self.builds = gpd.read_file(builds)
         self.state_cbg = gpd.read_file(county_cbg)

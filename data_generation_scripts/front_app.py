@@ -52,7 +52,8 @@ else:
         safe_df = st.text_input("Enter Safegraph parquet file path", value=f"../data/safegraph.parquet/year=2021/region=TN/city={city}/")
 
 builds = ''
-ms_enabled = st.checkbox("Use MS Buildings data. Can be downloaded from [Global ML Buildings Footprint by Bing Maps](https://github.com/microsoft/GlobalMLBuildingFootprints)")
+st.write('Microsoft Buildings footprint can be downloaded from [Global ML Buildings Footprint by Bing Maps](https://github.com/microsoft/GlobalMLBuildingFootprints)')
+ms_enabled = st.checkbox("Use MS Buildings data")
 if ms_enabled:
     builds = st.text_input("Enter MS buildings file path", value="../data/Tennessee.geojson")
 

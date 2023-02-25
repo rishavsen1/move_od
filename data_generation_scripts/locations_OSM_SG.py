@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from shapely.geometry import Polygon, Point
 import geopandas as gpd
 import pandas as pd
-from logger import logger
+# from logger import logger
 
 # COUNTY = '037'
 # AREA = 'Davidson'
@@ -22,9 +22,9 @@ from logger import logger
 
 class locations_OSM_SG:
 
-    print('Running locations_OSM_SG.py')
 
     def __init__(self, county, area, county_cbg, sg_enabled, data_path):
+        print('Initliazing locations_OSM_SG.py')
         self.COUNTY = county
         self.AREA = area
         self.county_cbg = gpd.read_file(county_cbg)
@@ -61,9 +61,9 @@ class locations_OSM_SG:
         try:
             res_build.to_csv(f'{self.data_path}/county_residential_buildings.csv', index=False)
         except FileNotFoundError:
-            logger.error(f'File not found: {self.data_path}/county_residential_buildings.csv')
+            print(f'File not found: {self.data_path}/county_residential_buildings.csv')
         except:
-            logger.error('General exception')
+            print('General exception')
 
 
         #work tags
