@@ -71,21 +71,21 @@ if begin:
         lodes_combs = lodes_combs.Lodes_comb(county_cbg, data_path, ms_enabled, timedelta, time_start, time_end)
         sg_combs = sg_combs.Sg_combs(county_cbg, data_path, ms_enabled, timedelta, time_start, time_end)
 
-        # lodes_read.generate()
-        # st.success('LODES data filtered')
+        lodes_read.generate()
+        st.success('LODES data filtered')
 
-        # if sg_enabled:
-        #     safegraph = safegraph.Safegraph(county, city, county_cbg, safe_df, data_path)
-        #     safegraph.filter_SG()
-        #     st.success('Safegraph data filtered')
+        if sg_enabled:
+            safegraph = safegraph.Safegraph(county, city, county_cbg, safe_df, data_path)
+            safegraph.filter_SG()
+            st.success('Safegraph data filtered')
 
-        # if ms_enabled:
-        #     ms_builds = read_ms_buildings.MS_Buildings(county, county_cbg, builds, data_path)
-        #     ms_builds.buildings()
-        #     st.success('MS Buildings data filtered')
+        if ms_enabled:
+            ms_builds = read_ms_buildings.MS_Buildings(county, county_cbg, builds, data_path)
+            ms_builds.buildings()
+            st.success('MS Buildings data filtered')
 
-        # locations.find_locations_OSM()  
-        # st.success('Locations generated')   
+        locations.find_locations_OSM()  
+        st.success('Locations generated')   
 
         if 'LODES' in choice:
             lodes_combs.generate_combs()
