@@ -36,7 +36,10 @@ class Sg_combs:
             current += delta
 
     def generate_combs(self):
-    #loading geometry data
+
+        print("Running safegraph_comb.py")
+        
+        #loading geometry data
         county_cbg = pd.read_csv(f'{self.data_path}/county_cbg.csv')
         county_cbg['intpt'] = county_cbg[['INTPTLAT', 'INTPTLON']].apply(lambda p: Sg_combs.intpt_func(p), axis=1)
         county_cbg = gpd.GeoDataFrame(county_cbg, geometry=gpd.GeoSeries.from_wkt(county_cbg.geometry))
@@ -64,19 +67,23 @@ class Sg_combs:
         ms_build.GEOID = ms_build.GEOID.astype(str)
         ms_build['location'] = ms_build.geometry.apply(lambda p: [p.y, p.x])  
 
-        #generating array of start and return times (in 15 min intervals)
-        times=[]
-        for time in range(len(self.time_start)):
-            times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
-                Sg_combs.datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
-                timedelta(seconds=self.timedelta))])
 
-        time_slot1 = times[0]
+        # self.time_start[0] = datetime.time(7, 00) 
+        # self.time_end[0] = datetime.time(21, 00) 
+
+        # #generating array of start and return times (in 15 min intervals)
+        # times=[]
+        # for time in range(len(self.time_start)):
+        #     times.append([datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
+        #         Sg_combs.datetime_range(datetime(2023, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2023, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
+        #         timedelta(seconds=self.timedelta))])
+
+        # time_slot1 = times[0]
         # print(time_slot1)
 
-        # times_evening = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
-        #     datetime_range(datetime(2016, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2016, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second), 
-        #     timedelta(seconds=self.timedelta))]
+        time_slot1 = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in 
+            Sg_combs.datetime_range(datetime(2016, 9, 1, 7, 0), datetime(2016, 9, 1, 21, 0), 
+            timedelta(seconds=self.timedelta))]
 
         #TODO: Add self.start_time (morning and evening), and self.end_time(morning and evening), self.timedelta to times_morning( or, times_evening)
 
@@ -144,8 +151,6 @@ class Sg_combs:
                 # for time in range(len(times[0])):
                 #     time_slot[time].append(np.random.choice(time, size=1, replace=True))
                 
-                # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
-                # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
 
                 # print(movement)
 
@@ -164,14 +169,16 @@ class Sg_combs:
                 #     temp.loc[freq, f'time_{time}_secs'] = (time_slot[time][0] - datetime(1900, 1, 1)).total_seconds()
                 #     temp.loc[freq, f'time_{time}_str'] = time_slot[time][0].strftime('%H:%M')
                 
+                time_slot = np.random.choice(time_slot1, size=1, replace=True)
+                # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
 
-                temp.loc[freq, 'go_time'] = time_slot1[0]
-                temp.loc[freq, 'go_time_secs'] = (time_slot1[0] - datetime(1900, 1, 1)).total_seconds()
-                temp.loc[freq, 'go_time_str'] = time_slot1[0].strftime('%H:%M')
+                temp.loc[freq, 'go_time'] = time_slot[0].time()
+                temp.loc[freq, 'go_time_secs'] = (time_slot[0] - datetime(1900, 1, 1)).total_seconds()
+                temp.loc[freq, 'go_time_str'] = time_slot[0].strftime('%H:%M')
 
-                
-                ret_time = time_slot1[0] + timedelta(minutes = movement['median_dwell'])
-                temp.loc[freq, 'return_time'] = ret_time
+                ret_random = np.random.choice(range(-20, 60, 1), size=1, replace=True)
+                ret_time = time_slot[0] + timedelta(minutes = (movement['median_dwell'])+ret_random[0])
+                temp.loc[freq, 'return_time'] = ret_time.time()
                 temp.loc[freq, 'return_time_secs'] = (ret_time - datetime(1900, 1, 1)).total_seconds()
                 temp.loc[freq, 'return_time_str'] = ret_time.strftime('%H:%M')
 

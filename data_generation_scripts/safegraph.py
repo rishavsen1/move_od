@@ -100,7 +100,7 @@ class Safegraph:
                 # temp['polygon_wkt'] = x['polygon_wkt'][i]
                 temp['latitude'] = x['latitude'][i]
                 temp['longitude'] = x['longitude'][i]
-                print(temp)
+                # print(temp)
                 y = y.append(temp)
             y['home_cbg'] = pd.to_numeric(y['home_cbg'], errors='coerce')
             y = y.dropna(subset=['home_cbg'])

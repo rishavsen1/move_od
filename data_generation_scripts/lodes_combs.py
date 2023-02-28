@@ -141,10 +141,12 @@ class Lodes_comb:
                 r = r.drop([rand_r]).reset_index(drop=True)
                 c = c.drop([rand_c]).reset_index(drop=True)
                 
-                time_slot = [[]]
-                for time in range(len(times)):
-                    time_slot[time].append(np.random.choice(times[time], size=1, replace=True))                
+                time_slot = []
 
+                for time in range(len(times)):
+                    # print(times[time])
+                    time_slot.append(np.random.choice(times[time], size=1, replace=True))                
+                    
                 # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
                 # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
 
