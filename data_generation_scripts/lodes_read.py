@@ -24,15 +24,12 @@ class Lodes_gen:
     def generate(self):
     #loading parts of the available data
     #these files are not included here, can be downloaded from: https://lehd.ces.census.gov/data/lodes/LODES7/tn/od/
-        
-        #appending all the sources
-        print(self.county_lodes_paths)
+        print('Running lodes_read.py')
 
+        #appending all the sources
         for i, lodes_path in enumerate(self.county_lodes_paths):
             temp_df = pd.read_csv(lodes_path).rename(columns = {'S000':'total_jobs'})
-            # print(temp_df.head)
             self.df = self.df.append(temp_df)
-            # print(self.df.head)
             
         #filtering out duplicates 
         tn_lodes = self.df.drop_duplicates()
@@ -42,8 +39,6 @@ class Lodes_gen:
         tn_lodes.h_geocode = tn_lodes.h_geocode.apply(lambda x: x[0:-3])
         tn_lodes.w_geocode = tn_lodes.w_geocode.apply(lambda x: x[0:-3])
 
-        print(tn_lodes.head())
-
         #read Hamilton county blocks (too large to store in github)
         # can be downloaded from : https://vanderbilt365-my.sharepoint.com/:f:/g/personal/rishav_sen_vanderbilt_edu/EuB8qV7yx3ZDoxpXq232E1cBJ1Q3Qlzr1cQOvP3UKWqmHw?e=cc1z5h
 
@@ -51,12 +46,10 @@ class Lodes_gen:
         cbgs = cbgs[cbgs.COUNTYFP == self.COUNTY][['GEOID', 'geometry']]
         cbgs.GEOID = cbgs.GEOID.astype(str)
 
-        print(cbgs.head())
-
         # filtering TN LODES data for cbgs only in selected county
         area_lodes = pd.merge(tn_lodes, cbgs, left_on='h_geocode', right_on='GEOID', how='inner').merge(cbgs, left_on='w_geocode', right_on='GEOID', how='inner').sort_values('total_jobs', ascending=False).reset_index(drop=True)
         area_lodes = area_lodes.drop(['GEOID_x', 'GEOID_y', 'geometry_x', 'geometry_y'], axis=1)
-        # print(area_lodes.head())
+
         # it is stored at the block level (smaller area than CBG)
         area_lodes.to_csv(f'{self.data_path}/county_lodes_2019.csv', index=False)
 
