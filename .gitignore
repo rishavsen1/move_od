@@ -63,3 +63,8 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/windows,visualstudiocode,jupyternotebooks
 
 /data
+
+/data_generation_scripts/.ipynb_checkpoints
+/data_generation_scripts/__pycache__
+/data_generation_scripts/notebooks
+/data_generation_scripts/'notebooks v2'
