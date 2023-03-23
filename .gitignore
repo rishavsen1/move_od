@@ -68,3 +68,5 @@ $RECYCLE.BIN/
 /data_generation_scripts/__pycache__
 /data_generation_scripts/notebooks
 /data_generation_scripts/'notebooks v2'
+/data_generation_scripts/notebooks_v2
+/data_generation_scripts/cache
