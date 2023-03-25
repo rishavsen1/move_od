@@ -6,25 +6,25 @@ We can generate origin-destination (OD) pairs for a given county or city, from t
 
 1. Geographic data
 
-The geographic data of Hamilton county defines the area and boundaries of the census tracts and CBGs. It also provides unique GEOIDs for each zone under consideration, which we can further use to find relevant regions in other datasets. It is initially in .shp format and has been stored in [ham_cbg.csv](data/ham_cbg.csv).
+The geographic data of Hamilton county defines the area and boundaries of the census tracts and CBGs. It also provides unique GEOIDs for each zone under consideration, which we can further use to find relevant regions in other datasets.
 
 2. People movement`<br>`
-   a. [LODES dataset](data/hamilton_lodes_2019.zip)`<br>`
+   a. [LODES dataset](https://lehd.ces.census.gov/data/)`<br>`
    b. Safegraph dataset (our data is for Jan 2021-Mar2021)
 
 These provide the information about the movement of people (the number of people moving, and their origin and destination CBG).
 
 3. Residential and Work locations
 
-   The locations of residential and commercial(work) areas are obtained from OpenStreetMaps(OSM). They are obtained by using the [OSM Accomodation tags](https://wiki.openstreetmap.org/wiki/Key:building#Accommodation) and the python library OSMNX. The associated file is ([residential_locations.csv](data/ham_residential_buildings2.csv))
+   The locations of residential and commercial(work) areas are obtained from OpenStreetMaps(OSM). They are obtained by using the [OSM Accomodation tags](https://wiki.openstreetmap.org/wiki/Key:building#Accommodation) and the python library OSMNX.
 
-   The work locations are obtained as a combination of the tags [commercial](https://wiki.openstreetmap.org/wiki/Key:building#Commercial), [civic/amenity](https://wiki.openstreetmap.org/wiki/Key:building#Civic/amenity), and the Safegraph POI (point of interest) locations. The associated file is ([work_locations.csv](data/work_loc_poi_com_civ.csv))
+   The work locations are obtained as a combination of the tags [commercial](https://wiki.openstreetmap.org/wiki/Key:building#Commercial), [civic/amenity](https://wiki.openstreetmap.org/wiki/Key:building#Civic/amenity), and the Safegraph POI (point of interest) locations.
 
 4. Microsoft Buildings dataset (complements to OSM locations)
 
    These are the locations of all buildings in Hamilton county, obtained from [Microsoft Building Footprints](https://github.com/Microsoft/USBuildingFootprints), and are **not labelled** as home/work places. These locations are used in lieu of OSM labelled locations only in case the concerned CBG has no home/work locations from OSM.
 
-   The data extraction is done as in [read_ms_buildings.ipynb](read_ms_buildings.ipynb).
+   The data extraction is done as in [read_ms_buildings.py](OD_generation_scripts/read_ms_buildings.py).
 
 ## Deriving the OD matrix
 
@@ -45,20 +45,18 @@ For example if an OD pair has 50 people travelling among them, then we sample 50
 (This was run on python 3.9 on Ubuntu machine)
 Install the requirements using `pip install -r requirements.txt`.
 
-Install Streamlit `pip install streamlit` and run the command:
+After installing Streamlit, run the command:
 
 ```
-streamlit run data_generation_scripts/front_app.py
+$ cd OD_generation_scripts
+$ streamlit run front_app.py
 ```
 
 Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced in the chosen output folder.
 
 ## Explanation of the generated OD data
 
-The generated data has been converted to parquet and is available at the following locations
-
-- [data\lodes_od_based_on_job.parquet](lodes_od_based_on_job.parquet)
-- [data\safegraph_od_weekday.parquet](safegraph_od_weekday.parquet)
+The generated data has been converted to parquet and is available in the folder you selected to be the output folder. ( by deafult: `generated_OD`)
 
 Each row in either dataset represents a single trip by one person. In the case of lodes dataset, the trip represent movement to the job location and then back to home. Here are the key columns.
 
