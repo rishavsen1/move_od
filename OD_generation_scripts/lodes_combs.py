@@ -180,10 +180,23 @@ class Lodes_comb:
         random.seed(42)
 
         days = pd.date_range(self.start_date, self.end_date-timedelta(days=1),freq='d').to_list()
-        day_count = len(days)
 
         # Lodes_comb.generate_OD(county_lodes, county_cbg, res_build, com_build, ms_build, times)
-        
+        weekdays = []
+        weekends = []
+
+        weekdays = days
+
+        for day in days:
+            if day.weekday() <= 4:
+                weekdays.append(day)
+            else:
+                weekends.append(day)
+                pd.DataFrame().to_csv(f'{self.data_path}/lodes_combs/lodes_{day.date()}.csv', index=False)
+
+
+        day_count = len(weekdays)
+            
         processes = []
         cpu_count = os.cpu_count() -2
         while (day_count>0):
@@ -194,8 +207,8 @@ class Lodes_comb:
             else:
                 num_processes = day_count
 
-            day_sub = days[:num_processes]
-            days = days[num_processes:]
+            day_sub = weekdays[:num_processes]
+            weekdays = weekdays[num_processes:]
             day_count -= num_processes
 
             print(f'Running {num_processes} days in parallel. {day_count} days left.')
