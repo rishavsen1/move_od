@@ -30,9 +30,7 @@ class Lodes_gen:
 
         for i, lodes_path in enumerate(self.county_lodes_paths):
             temp_df = pd.read_csv(lodes_path).rename(columns = {'S000':'total_jobs'})
-            # print(temp_df.head)
             self.df = self.df.append(temp_df)
-            # print(self.df.head)
             
         #filtering out duplicates 
         tn_lodes = self.df.drop_duplicates()

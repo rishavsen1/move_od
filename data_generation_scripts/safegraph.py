@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-
 import pandas as pd
 import datetime as dt
 import ast
 import geopandas as gpd
 import numpy as np
+from scipy.stats import norm
 import math
+from datetime import datetime, timedelta
+import random
+from itertools import chain
+import json
+import ast
+
 pd.options.display.float_format = "{:.2f}".format
 
 
@@ -18,347 +24,131 @@ pd.options.display.float_format = "{:.2f}".format
 
 class Safegraph:
 
-    print('Running safegraph.py')
 
-    def __init__(self, county, city, county_cbg, safe_df, data_path):
+    def __init__(self, county, city, county_cbg, safe_df, data_path, start_date, end_date):
+        print('Initliazing safegraph.py')
         self.COUNTY = county
-        self.county_cbg = gpd.read_file(county_cbg)
+        self.county_cbg = county_cbg
         self.CITY = city
-        self.safe_df = pd.read_parquet(safe_df, engine='pyarrow')
+        self.safe_df = safe_df
         self.data_path = data_path
+        self.start_date = start_date
+        self.end_date = end_date
+
+    def find_norm_dist(bucketed_data):
+        total_values = 0
+        total_sum = 0
+        squared_diff_sum=0
+
+        for key, count in bucketed_data.items():
+            if "-" in key:
+                lower, upper = map(int, key.split("-"))
+            else:
+                lower = 0
+                upper = int(key[1:])
+            mid_point = (lower + upper) / 2
+            total_values += count
+            total_sum += mid_point * count
+        
+        mean = total_sum / total_values
+
+        squared_diff_sum = 0
+
+        for key, count in bucketed_data.items():
+            if "-" in key:
+                lower, upper = map(int, key.split("-"))
+            else:
+                lower = 0
+                upper = int(key[1:])
+            mid_point = (lower + upper) / 2
+            squared_diff = ((mid_point - mean) ** 2) * count
+            squared_diff_sum += squared_diff
+
+        variance = squared_diff_sum / total_values
+        std_dev = np.sqrt(variance)
+
+        # Create a normal distribution using the mean and standard deviation
+        normal_distribution = norm(loc=mean, scale=std_dev)
+        return normal_distribution
+
+    def prev_weekday(d, weekday):
+        days_behind = d.weekday()
+        return d - timedelta(days_behind)
+
+    def get_sg_poi(self):
+        print('Running get_sg_poi()')
+        county_cbg = gpd.read_file(self.county_cbg)
+        county_cbg = county_cbg[county_cbg.COUNTYFP == self.COUNTY]
+        county_cbg.GEOID = county_cbg.GEOID.astype(str)
+        
+        safe_df = pd.DataFrame()
+        for safe_df_name in self.safe_df:
+            temp = pd.read_parquet(safe_df_name, engine='pyarrow', columns=['date_begin', 'latitude', 'longitude', 'poi_cbg'])
+            safe_df = safe_df.append(temp, ignore_index=True)
+
+        safe_df['poi_cbg'] = safe_df['poi_cbg'].astype(str)
+        safe_df.merge(county_cbg, left_on='poi_cbg', right_on='GEOID').to_csv(f'{self.data_path}/sg_poi_cbgs.csv', index=False)
+
+    def by_day(row):
+        week = 7
+        temp = pd.DataFrame()
+        start_date = row['date_begin']
+        visitor_homes = list(chain.from_iterable([[k] * v for k, v in row['visitor_home_cbgs'].items()]))
+        norm_dist = Safegraph.find_norm_dist(row['bucketed_dwell_times'])
+
+        if len(visitor_homes) > 0:
+            home_cbg = random.sample(visitor_homes, 1)[0]
+            visitor_homes.remove(home_cbg)
+
+            for day in range(week):
+                temp.loc[day, 'date'] = start_date + timedelta(days=day)
+                temp.loc[day, 'visits'] = int(row['visits_by_day'][day])
+                temp.loc[day, 'home_cbg'] = str(home_cbg)
+                temp.loc[day, 'poi_cbg'] = str(row['poi_cbg']).split('.')[0]
+                while True:
+                    sampled_value = norm_dist.rvs(size=1)
+                    if sampled_value >=0:
+                        break
+                temp.loc[day, 'dwell_time'] = sampled_value
+
+        return temp
+    
+    def get_day_of_week(self):
+        print('Running get_day_of_week()')
+
+        random.seed(42)
+
+        county_cbg = gpd.read_file(self.county_cbg)
+        county_cbg = county_cbg[county_cbg.COUNTYFP == self.COUNTY]
+        county_cbg.GEOID = county_cbg.GEOID.astype(str)
+        
+        safe_df = pd.DataFrame()
+        safe_df_days = pd.DataFrame()
+
+        start_prev_monday = Safegraph.prev_weekday(self.start_date, 0)
+        end_prev_monday = Safegraph.prev_weekday(self.end_date, 0)
+
+        for safe_df_name in self.safe_df:
+            temp = pd.read_parquet(safe_df_name, engine='pyarrow', columns=['date_begin', 'visits_by_day', 'visitor_home_cbgs', 'poi_cbg', 'bucketed_dwell_times'])
+            temp = temp[temp['date_begin'] >= start_prev_monday]
+            temp = temp[temp['date_begin'] <= end_prev_monday]
+            safe_df = safe_df.append(temp, ignore_index=True)
 
-    def func(x):
-        return pd.DataFrame(x.items(), columns = ['home_cbg','frequency'])
-
-
-    def filter_SG(self):
-        print('Running safegraph.py')
-        self.county_cbg = self.county_cbg[self.county_cbg.COUNTYFP == self.COUNTY]
-        self.county_cbg.GEOID = self.county_cbg.GEOID.astype(str)
-
-        county_cbgs = self.county_cbg.GEOID.unique().tolist()
-
-
-        pd.set_option('display.max_columns', None)
-        self.safe_df.head()
-
-        # reference : # https://docs.safegraph.com/docs/places
-
-        # l= ['category_tags', 'naics_code', 'date_begin','distance_from_home', 'includes_parking_lot','location_name', 'poi_cbg','open_hours','raw_visit_counts', 'related_same_day_brand','related_same_week_brand','sub_category', 'top_category','visits_by_day','visits_friday','visits_saturday', 'visits_sunday', 'visits_monday', 'visits_tuesday', 'visits_wednesday', 'visits_thursday', 'polygon_wkt', 'latitude', 'longitude']
-        l= ['category_tags', 'naics_code', 'date_begin','distance_from_home', 'includes_parking_lot','location_name', 'poi_cbg','open_hours','raw_visit_counts', 'sub_category', 'top_category','visits_by_day','visits_friday','visits_saturday', 'visits_sunday', 'visits_monday', 'visits_tuesday', 'visits_wednesday', 'visits_thursday', 'latitude', 'longitude']
-
-        df = self.safe_df.drop(self.safe_df.columns.difference(['visitor_home_aggregation', 'visitor_home_cbgs']+ l), 1)
-        df['poi_cbg'] = df['poi_cbg'].apply(lambda x: str(x).split('.')[0])
-        df = df[df['poi_cbg'].isin(county_cbgs)].reset_index(drop = True)
-        df['visitor_home_cbgs'] = pd.DataFrame(df['visitor_home_cbgs'].apply(ast.literal_eval))
-        df['visitor_info'] = df.apply(lambda x: Safegraph.  func(x['visitor_home_cbgs']), axis =1)
-        df = df.sort_values(by = ['date_begin']).reset_index(drop = True)
-
-        chunks = np.array_split(df, 5)
-
-        t = [chunks[i].groupby('date_begin') for i in range(5)]
-
-        # x = t[0].get_group(dt.date(2021, 1, 4))
-        # x
-        # x.columns
-
-        for keys in t[0].groups:
-            print (keys)
-
-        res = pd.DataFrame()
-
-        for key in t[0].groups:
-            x = t[0].get_group(key)
-            x = x.reset_index(drop = True)
-            y = pd.DataFrame()
-            for i in range(len(x[:10])):
-                temp = x['visitor_info'][i]
-                alpha = pd.DataFrame(data=df.loc[i,l]).T
-                temp = pd.concat([temp,alpha], axis = 1) 
-                temp['date_begin'] = x['date_begin'][i]
-                temp['poi_cbg'] = x['poi_cbg'][i]
-                temp['category_tags'] = x['category_tags'][i]
-                temp['naics_code'] = x['naics_code'][i]
-                temp['distance_from_home'] = x['distance_from_home'][i]
-                temp['includes_parking_lot'] = x['includes_parking_lot'][i]
-                temp['location_name'] = x['location_name'][i]
-                temp['open_hours'] = x['open_hours'][i]
-                temp['raw_visit_counts'] = x['raw_visit_counts'][i]
-                # temp['related_same_day_brand'] = x['related_same_day_brand'][i]
-                # temp['related_same_week_brand'] = x['related_same_week_brand'][i]
-                temp['sub_category'] = x['sub_category'][i]
-                temp['top_category'] = x['top_category'][i]
-                temp['visits_by_day'] = x['visits_by_day'][i]
-                temp['visits_monday'] = x['visits_monday'][i]
-                temp['visits_tuesday'] = x['visits_tuesday'][i]
-                temp['visits_wednesday'] = x['visits_wednesday'][i]
-                temp['visits_thursday'] = x['visits_thursday'][i]
-                temp['visits_friday'] = x['visits_friday'][i]
-                temp['visits_saturday'] = x['visits_saturday'][i]
-                temp['visits_sunday'] = x['visits_sunday'][i]
-                # temp['polygon_wkt'] = x['polygon_wkt'][i]
-                temp['latitude'] = x['latitude'][i]
-                temp['longitude'] = x['longitude'][i]
-                y = y.append(temp)
-            y['home_cbg'] = pd.to_numeric(y['home_cbg'], errors='coerce')
-            y = y.dropna(subset=['home_cbg'])
-            y['home_cbg'] =y['home_cbg'].apply(lambda x: str(x).split('.')[0])
-            # print('y', y)
-            y = y[y['home_cbg'].isin(county_cbgs)].reset_index(drop = True)
-            # print('y_filt', y)
-            # y = y.groupby(['date_begin', 'category_tags', 'naics_code', 'distance_from_home', 'includes_parking_lot', 'location_name', 'open_hours', 'raw_visit_counts', 'related_same_day_brand', 'related_same_week_brand', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'polygon_wkt', 'home_cbg', 'poi_cbg', 'latitude', 'longitude']).agg({'frequency': sum}).reset_index()
-            y = y.groupby(['date_begin', 'category_tags', 'naics_code', 'distance_from_home', 'includes_parking_lot', 'location_name', 'open_hours', 'raw_visit_counts', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'home_cbg', 'poi_cbg', 'latitude', 'longitude']).agg({'frequency': sum}).reset_index()
-            res = res.append(y)
-            res = res.reset_index(drop = True)
-
-        # res.head()
-
-        # county_cbg = pd.read_csv('../data/county_cbg.csv')
-        # county_cbg.GEOID = county_cbg.GEOID.astype(str)
-        # county_cbg.head()
-
-        t = res.groupby('home_cbg').first().reset_index()
-        t.home_cbg = t.home_cbg
-        # .apply(lambda x: str(math.trunc(x)))
-        t.merge(self.county_cbg, left_on='home_cbg', right_on='GEOID').to_csv(f'{self.data_path}/sg_cbgs.csv', index=False)
-
-        t = res.groupby('poi_cbg').first().reset_index()
-        t.poi_cbg = t.poi_cbg
-        # .apply(lambda x: str(math.trunc(x)))
-        t.merge(self.county_cbg, left_on='poi_cbg', right_on='GEOID').to_csv(f'{self.data_path}/sg_poi_cbgs.csv', index=False)
-
+        safe_df['visitor_home_cbgs'] = safe_df['visitor_home_cbgs'].apply(lambda x: json.loads(x))
+        safe_df['bucketed_dwell_times'] = safe_df['bucketed_dwell_times'].apply(lambda x: json.loads(x))
+        safe_df['visits_by_day'] = safe_df['visits_by_day'].apply(lambda x: ast.literal_eval(x))
 
-        from datetime import datetime
-        # start_date = datetime.strptime('Jan 11 2021  11:00PM', '%b %d %Y %I:%M%p').date()
-        # end_date = datetime.strptime('Mar 16 2021  12:00AM', '%b %d %Y %I:%M%p').date()
-        # # end_date
-        exact_date = datetime.strptime('Jan 11 2021  12:00AM', '%b %d %Y %I:%M%p').date()
-        res2 = res
-        res2.home_cbg = res2.home_cbg.astype(str)
-        self.county_cbg.GEOID = self.county_cbg.GEOID.astype(str)
-        # res2.home_cbg = res2.home_cbg.astype('double') 
-        # res2.home_cbg = res2.home_cbg.astype('int64') 
-        # res2.home_cbg = res2.home_cbg.astype('str') 
-
-        # res2[(res2.date_begin>=start_date) & (res2.date_begin<=end_date)].reset_index(drop=True)
-        # res2[res2.date_begin==exact_date].reset_index(drop=True)
-        res3 = res2[res2.date_begin==exact_date].merge(self.county_cbg[['TRACTCE', 'GEOID', 'NAMELSAD']], left_on='home_cbg', right_on='GEOID').drop('GEOID', axis=1)
-
-
-        res2.to_csv(f'{self.data_path}/county_sg_first_chunk_of_five.csv')
-        res3.to_csv(f'{self.data_path}/county_sg_week2_jan21_reduced_cols.csv')
-
-
-        # for key in t[1].groups:
-        #     x = t[1].get_group(key)
-        #     x = x.reset_index(drop = True)
-        #     y = pd.DataFrame()
-        #     for i in range(len(x)):
-        #         temp = x['visitor_info'][i]
-        #         temp['date_begin'] = x['date_begin'][i]
-        #         temp['poi_cbg'] = x['poi_cbg'][i]
-        #         temp['category_tags'] = x['category_tags'][i]
-        #         temp['distance_from_home'] = x['distance_from_home'][i]
-        #         temp['includes_parking_lot'] = x['includes_parking_lot'][i]
-        #         temp['location_name'] = x['location_name'][i]
-        #         temp['open_hours'] = x['open_hours'][i]
-        #         temp['raw_visit_counts'] = x['raw_visit_counts'][i]
-        #         temp['related_same_day_brand'] = x['related_same_day_brand'][i]
-        #         temp['related_same_week_brand'] = x['related_same_week_brand'][i]
-        #         temp['sub_category'] = x['sub_category'][i]
-        #         temp['top_category'] = x['top_category'][i]
-        #         temp['visits_by_day'] = x['visits_by_day'][i]
-        #         temp['visits_monday'] = x['visits_monday'][i]
-        #         temp['visits_tuesday'] = x['visits_tuesday'][i]
-        #         temp['visits_wednesday'] = x['visits_wednesday'][i]
-        #         temp['visits_thursday'] = x['visits_thursday'][i]
-        #         temp['visits_friday'] = x['visits_friday'][i]
-        #         temp['visits_saturday'] = x['visits_saturday'][i]
-        #         temp['visits_sunday'] = x['visits_sunday'][i]
-        #         temp['polygon_wkt'] = x['polygon_wkt'][i]
-        #         y = y.append(temp)
-        #     y['home_cbg'] = pd.to_numeric(y['home_cbg'], errors='coerce')
-        #     y = y.dropna(subset=['home_cbg'])
-        #     y['home_cbg'] =y['home_cbg'].astype(float)
-        #     y = y[y['home_cbg'].isin(county_cbgs)].reset_index(drop = True)
-        #     y = y.groupby(['date_begin', 'category_tags', 'home_cbg', 'poi_cbg']).agg({'frequency': sum}).reset_index()
-        #     res = res.append(y)
-        #     res = res.reset_index(drop = True)
-
-
-        # In[66]:
-
-
-        # for key in t[2].groups:
-        #     x = t[2].get_group(key)
-        #     x = x.reset_index(drop = True)
-        #     y = pd.DataFrame()
-        #     for i in range(len(x)):
-        #         temp = x['visitor_info'][i]
-        #         temp['date_begin'] = x['date_begin'][i]
-        #         temp['poi_cbg'] = x['poi_cbg'][i]
-        #         # temp['brands'] = x['brands'][i]
-        #         temp['category_tags'] = x['category_tags'][i]
-        #         temp['distance_from_home'] = x['distance_from_home'][i]
-        #         temp['includes_parking_lot'] = x['includes_parking_lot'][i]
-        #         temp['location_name'] = x['location_name'][i]
-        #         temp['open_hours'] = x['open_hours'][i]
-        #         temp['raw_visit_counts'] = x['raw_visit_counts'][i]
-        #         temp['related_same_day_brand'] = x['related_same_day_brand'][i]
-        #         temp['related_same_week_brand'] = x['related_same_week_brand'][i]
-        #         temp['sub_category'] = x['sub_category'][i]
-        #         temp['top_category'] = x['top_category'][i]
-        #         temp['visits_by_day'] = x['visits_by_day'][i]
-        #         temp['visits_monday'] = x['visits_monday'][i]
-        #         temp['visits_tuesday'] = x['visits_tuesday'][i]
-        #         temp['visits_wednesday'] = x['visits_wednesday'][i]
-        #         temp['visits_thursday'] = x['visits_thursday'][i]
-        #         temp['visits_friday'] = x['visits_friday'][i]
-        #         temp['visits_saturday'] = x['visits_saturday'][i]
-        #         temp['visits_sunday'] = x['visits_sunday'][i]
-        #         temp['polygon_wkt'] = x['polygon_wkt'][i]
-        #         y = y.append(temp)
-        #     y['home_cbg'] = pd.to_numeric(y['home_cbg'], errors='coerce')
-        #     y = y.dropna(subset=['home_cbg'])
-        #     y['home_cbg'] =y['home_cbg'].astype(float)
-        #     y = y[y['home_cbg'].isin(county_cbgs)].reset_index(drop = True)
-        #     y = y.groupby(['date_begin', 'category_tags', 'distance_from_home', 'includes_parking_lot', 'location_name', 'open_hours', 'raw_visit_counts', 'related_same_day_brand', 'related_same_week_brand', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'polygon_wkt', 'home_cbg', 'poi_cbg']).agg({'frequency': sum}).reset_index()
-        #     res = res.append(y)
-        #     res = res.reset_index(drop = True)
-
-
-        # In[68]:
-
-
-        # for key in t[3].groups:
-        #     x = t[3].get_group(key)
-        #     x = x.reset_index(drop = True)
-        #     y = pd.DataFrame()
-        #     for i in range(len(x)):
-        #         temp = x['visitor_info'][i]
-        #         temp['date_begin'] = x['date_begin'][i]
-        #         temp['poi_cbg'] = x['poi_cbg'][i]
-        #         temp['category_tags'] = x['category_tags'][i]
-        #         temp['distance_from_home'] = x['distance_from_home'][i]
-        #         temp['includes_parking_lot'] = x['includes_parking_lot'][i]
-        #         temp['location_name'] = x['location_name'][i]
-        #         temp['open_hours'] = x['open_hours'][i]
-        #         temp['raw_visit_counts'] = x['raw_visit_counts'][i]
-        #         temp['related_same_day_brand'] = x['related_same_day_brand'][i]
-        #         temp['related_same_week_brand'] = x['related_same_week_brand'][i]
-        #         temp['sub_category'] = x['sub_category'][i]
-        #         temp['top_category'] = x['top_category'][i]
-        #         temp['visits_by_day'] = x['visits_by_day'][i]
-        #         temp['visits_monday'] = x['visits_monday'][i]
-        #         temp['visits_tuesday'] = x['visits_tuesday'][i]
-        #         temp['visits_wednesday'] = x['visits_wednesday'][i]
-        #         temp['visits_thursday'] = x['visits_thursday'][i]
-        #         temp['visits_friday'] = x['visits_friday'][i]
-        #         temp['visits_saturday'] = x['visits_saturday'][i]
-        #         temp['visits_sunday'] = x['visits_sunday'][i]
-        #         temp['polygon_wkt'] = x['polygon_wkt'][i]
-        #         y = y.append(temp)
-        #     y['home_cbg'] = pd.to_numeric(y['home_cbg'], errors='coerce')
-        #     y = y.dropna(subset=['home_cbg'])
-        #     y['home_cbg'] =y['home_cbg'].astype(float)
-        #     y = y[y['home_cbg'].isin(county_cbgs)].reset_index(drop = True)
-        #     y = y.groupby(['date_begin', 'category_tags', 'distance_from_home', 'includes_parking_lot', 'location_name', 'open_hours', 'raw_visit_counts', 'related_same_day_brand', 'related_same_week_brand', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'polygon_wkt', 'home_cbg', 'poi_cbg']).agg({'frequency': sum}).reset_index()
-        #     res = res.append(y)
-        #     res = res.reset_index(drop = True)
-
-
-        # In[69]:
-
-
-        # for key in t[4].groups:
-        #     x = t[4].get_group(key)
-        #     x = x.reset_index(drop = True)
-        #     y = pd.DataFrame()
-        #     for i in range(len(x)):
-        #         temp = x['visitor_info'][i]
-        #         temp['date_begin'] = x['date_begin'][i]
-        #         temp['poi_cbg'] = x['poi_cbg'][i]
-        #         # temp['brands'] = x['brands'][i]
-        #         temp['category_tags'] = x['category_tags'][i]
-        #         temp['distance_from_home'] = x['distance_from_home'][i]
-        #         temp['includes_parking_lot'] = x['includes_parking_lot'][i]
-        #         temp['location_name'] = x['location_name'][i]
-        #         temp['open_hours'] = x['open_hours'][i]
-        #         temp['raw_visit_counts'] = x['raw_visit_counts'][i]
-        #         temp['related_same_day_brand'] = x['related_same_day_brand'][i]
-        #         temp['related_same_week_brand'] = x['related_same_week_brand'][i]
-        #         temp['sub_category'] = x['sub_category'][i]
-        #         temp['top_category'] = x['top_category'][i]
-        #         temp['visits_by_day'] = x['visits_by_day'][i]
-        #         temp['visits_monday'] = x['visits_monday'][i]
-        #         temp['visits_tuesday'] = x['visits_tuesday'][i]
-        #         temp['visits_wednesday'] = x['visits_wednesday'][i]
-        #         temp['visits_thursday'] = x['visits_thursday'][i]
-        #         temp['visits_friday'] = x['visits_friday'][i]
-        #         temp['visits_saturday'] = x['visits_saturday'][i]
-        #         temp['visits_sunday'] = x['visits_sunday'][i]
-        #         temp['polygon_wkt'] = x['polygon_wkt'][i]
-        #         y = y.append(temp)
-        #     y['home_cbg'] = pd.to_numeric(y['home_cbg'], errors='coerce')
-        #     y = y.dropna(subset=['home_cbg'])
-        #     y['home_cbg'] =y['home_cbg'].astype(float)
-        #     y = y[y['home_cbg'].isin(county_cbgs)].reset_index(drop = True)
-        #     y = y.groupby(['date_begin', 'category_tags', 'distance_from_home', 'includes_parking_lot', 'location_name', 'open_hours', 'raw_visit_counts', 'related_same_day_brand', 'related_same_week_brand', 'sub_category', 'top_category', 'visits_by_day', 'visits_friday','visits_monday', 'visits_saturday', 'visits_sunday', 'visits_thursday', 'visits_tuesday', 'visits_wednesday', 'polygon_wkt', 'home_cbg', 'poi_cbg']).agg({'frequency': sum}).reset_index()
-        #     res = res.append(y)
-        #     res = res.reset_index(drop = True)
-
-
-        # In[71]:
-
-
-        # res.to_csv("county_allweeks2021_new.csv")
-
-
-        # In[105]:
-
-
-        # res2 = res
-        # res2.home_cbg = res2.home_cbg.astype('double') 
-        # res2.home_cbg = res2.home_cbg.astype('int64') 
-        # res2.home_cbg = res2.home_cbg.astype('str') 
-
-
-        # In[130]:
-
-
-        # res3 = res2.merge(county_cbg[['TRACTCE', 'GEOID', 'NAMELSAD', 'geometry']], left_on='home_cbg', right_on='GEOID').drop('GEOID', axis=1)
-
-
-        # In[132]:
-
-
-        # res3.to_csv('county_allweeks2021_cbg_names.csv', index=False)
-
-
-        # In[136]:
-
-
-        # res3[res3.date_begin<'2021-02-01']
-
-
-        # In[127]:
-
-
-        # pd.set_option('display.max_columns', None)
-        # location_df = pd.DataFrame(res3.location_name.unique(), columns=['locations']).sort_values('locations')
-        # # .to_csv('locations.csv', index=False)
-        # location_df.merge(res3[['location_name', 'category_tags']], left_on='locations', right_on='location_name', how='left')
-
-
-        # In[33]:
-
-
-        # res['category_tags'].value_counts().nlargest(20)
-
-
-        # In[45]:
-
-
-        # sample = self.safe_df.sample(n = 50)
-        # sample.to_csv("sample.csv")
 
+        for idx, row in safe_df.iterrows():
+            safe_df_days = safe_df_days.append(Safegraph.by_day(row), ignore_index=True)
+        
+        safe_df_days = safe_df_days[ (safe_df_days['date'] >= self.start_date) & (safe_df_days['date'] <= self.end_date) ]
+        
+        safe_df_days = safe_df_days.merge(county_cbg[['GEOID']], left_on='home_cbg', right_on='GEOID')
+        safe_df_days = safe_df_days.merge(county_cbg[['GEOID']], left_on='poi_cbg', right_on='GEOID')
+
+        safe_df_days = safe_df_days.groupby(['date', 'home_cbg', 'poi_cbg']).sum().reset_index()
+
+        safe_df_days.to_csv(f'{self.data_path}/sg_visits_by_day.csv', index=False)
+
+        print(safe_df_days.visits.sum())

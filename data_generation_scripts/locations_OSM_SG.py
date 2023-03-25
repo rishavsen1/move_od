@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from shapely.geometry import Polygon, Point
 import geopandas as gpd
 import pandas as pd
-from logger import logger
+# from logger import logger
 
 # COUNTY = '037'
 # AREA = 'Davidson'
@@ -22,9 +22,9 @@ from logger import logger
 
 class locations_OSM_SG:
 
-    print('Running locations_OSM_SG.py')
 
     def __init__(self, county, area, county_cbg, sg_enabled, data_path):
+        print('Initliazing locations_OSM_SG.py')
         self.COUNTY = county
         self.AREA = area
         self.county_cbg = gpd.read_file(county_cbg)
@@ -53,7 +53,7 @@ class locations_OSM_SG:
 
         #aggregating all residential tags
         pd.set_option('display.max_columns', None)
-        res_build = buildings[(buildings.building == 'residential') | (buildings.building == 'bungalow') | (buildings.building == 'cabin') | (buildings.building == 'dormitory') | (buildings.building == 'hotel') | (buildings.building == 'house') | (buildings.building == 'semidetached_house') | (buildings.building == 'barracks') | (buildings.building == 'farm') | (buildings.building == 'ger') | (buildings.building == 'houseboat') | (buildings.building == 'static_caravan') | (buildings.building == 'terrace')].reset_index()[['osmid', 'geometry', 'nodes', 'building', 'name', 'source']].sjoin(self.county_cbg)
+        res_build = buildings[(buildings.building == 'residential') | (buildings.building == 'bungalow') | (buildings.building == 'cabin') | (buildings.building == 'dormitory') | (buildings.building == 'hotel') | (buildings.building == 'house') | (buildings.building == 'semidetached_house') | (buildings.building == 'barracks') | (buildings.building == 'farm') | (buildings.building == 'ger') | (buildings.building == 'houseboat') | (buildings.building == 'static_caravan') | (buildings.building == 'terrace')].reset_index()[['osmid', 'geometry', 'nodes', 'building', 'name', 'source']].sjoin(self.county_cbg[['GEOID', 'geometry', 'INTPTLAT', 'INTPTLON']])
         res_build.geometry = res_build.geometry.apply(lambda x: x.centroid if x.geom_type =='Polygon' else x)
 
         #saving residential buildings
@@ -61,15 +61,15 @@ class locations_OSM_SG:
         try:
             res_build.to_csv(f'{self.data_path}/county_residential_buildings.csv', index=False)
         except FileNotFoundError:
-            logger.error(f'File not found: {self.data_path}/county_residential_buildings.csv')
+            print(f'File not found: {self.data_path}/county_residential_buildings.csv')
         except:
-            logger.error('General exception')
+            print('General exception')
 
 
         #work tags
 
-        com_build = buildings[(buildings.building == 'commercial') | (buildings.building == 'industrial') | (buildings.building == 'kiosk') | (buildings.building == 'office') | (buildings.building == 'retail') | (buildings.building == 'supermarket') | (buildings.building == 'warehouse')].reset_index()[['osmid', 'geometry', 'nodes', 'building', 'name', 'source']].sjoin(self.county_cbg)
-        civ_build = buildings[(buildings.building == 'bakehouse') | (buildings.building == 'civic') | (buildings.building == 'college') | (buildings.building == 'fire_station') | (buildings.building == 'government') | (buildings.building == 'hospital') | (buildings.building == 'kindergarten') | (buildings.building == 'public') | (buildings.building == 'school') | (buildings.building == 'train_station') | (buildings.building == 'transportation') | (buildings.building == 'university')].reset_index()[['osmid', 'geometry', 'nodes', 'building', 'name', 'source']].sjoin(self.county_cbg)
+        com_build = buildings[(buildings.building == 'commercial') | (buildings.building == 'industrial') | (buildings.building == 'kiosk') | (buildings.building == 'office') | (buildings.building == 'retail') | (buildings.building == 'supermarket') | (buildings.building == 'warehouse')].reset_index()[['osmid', 'geometry', 'nodes', 'building', 'name', 'source']].sjoin(self.county_cbg[['GEOID', 'geometry', 'INTPTLAT', 'INTPTLON']])
+        civ_build = buildings[(buildings.building == 'bakehouse') | (buildings.building == 'civic') | (buildings.building == 'college') | (buildings.building == 'fire_station') | (buildings.building == 'government') | (buildings.building == 'hospital') | (buildings.building == 'kindergarten') | (buildings.building == 'public') | (buildings.building == 'school') | (buildings.building == 'train_station') | (buildings.building == 'transportation') | (buildings.building == 'university')].reset_index()[['osmid', 'geometry', 'nodes', 'building', 'name', 'source']].sjoin(self.county_cbg[['GEOID', 'geometry', 'INTPTLAT', 'INTPTLON']])
 
         com_build.geometry = com_build.geometry.apply(lambda x: x.centroid if x.geom_type =='Polygon' else x)
         civ_build.geometry = civ_build.geometry.apply(lambda x: x.centroid if x.geom_type =='Polygon' else x)
@@ -99,6 +99,8 @@ class locations_OSM_SG:
 
         # saving work buildings to file 
         t1.to_csv(f'{self.data_path}/county_work_loc_poi_com_civ.csv', index=False)
+        print("Finished locations_OSM_Sg")
+        return
 
 
 # def preproc(x, attr:str, attr_name:str, ret_attr:str) -> any:

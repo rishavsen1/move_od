@@ -1,41 +1,40 @@
-#!/usr/bin/env python
-# coding: utf-8
+import logging
+import os
+import sys
+from datetime import datetime
 
-import geopandas as gpd
-import pandas as pd
+class Logger:
 
-#Tennessee buildings geojson from Microsoft Buildings github 
-#can be downloaded here: https://usbuildingdata.blob.core.windows.net/usbuildings-v2/Tennessee.geojson.zip
+    def __init__(self, log_file=None, log_level=logging.INFO):
+        self.log_file = log_file or f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        self.log_level = log_level
+        self._setup_logger()
 
-class MS_Buildings:
+    def _setup_logger(self):
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(self.log_level)
 
-    print("Running read_ms_buildings.py")
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
 
-    def __init__(self, county, county_cbg, builds, data_path) -> None:
-        self.COUNTY = county
-        self.builds = gpd.read_file(builds)
-        self.state_cbg = gpd.read_file(county_cbg)
-        self.data_path = data_path
+        # Log to file
+        file_handler = logging.FileHandler(self.log_file)
+        file_handler.setLevel(self.log_level)
+        file_handler.setFormatter(formatter)
+        self.logger.addHandler(file_handler)
 
-    
-    def buildings(self):
-        # builds = gpd.read_file('../data/Tennessee.geojson')
-        # COUNTY = '037'
-        # state_cbg = gpd.read_file('../data/Tennessee Census Block Groups/tl_2020_47_bg.shp')
+        # Log to console
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(self.log_level)
+        console_handler.setFormatter(formatter)
+        self.logger.addHandler(console_handler)
 
-        #input the cbgs and filter for the county
-        county_cbg = self.state_cbg[self.state_cbg['COUNTYFP']==self.COUNTY].reset_index(drop=True)
-        county_cbg.GEOID = county_cbg.GEOID.astype(str)
-        county_cbg = county_cbg.to_crs('epsg:4326')
+    def get_logger(self):
+        return self.logger
 
-        #choosing buildings only in the county
-        county_builds = self.builds.sjoin(county_cbg[['GEOID', 'geometry']])
 
-        #finding center of buildings from MS building footprints which are usually Polygons
-        county_builds['geo_centers'] = county_builds.geometry.centroid
-
-        # ax=county_cbg.plot(figsize=(10, 10), color='None', edgecolor="black", linewidth=0.4)
-        # county_builds.geo_centers.plot(figsize=(10, 10), ax=ax, markersize=0.1)
-
-        county_builds['location'] = county_builds.geo_centers.apply(lambda p: [p.y, p.x])
-        county_builds.to_csv(f'{self.data_path}/county_buildings_MS.csv', index=False)
+if __name__ == "__main__":
+    logger = Logger().get_logger()
+    logger.info("This is an information message.")
+    logger.warning
