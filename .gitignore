@@ -62,10 +62,12 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,visualstudiocode,jupyternotebooks
 
-/data_generation_scripts/.ipynb_checkpoints/
-/data_generation_scripts/__pycache__/
-/data_generation_scripts/cache/
-/data_generation_scripts/notebooks/
-/data_generation_scripts/notebooks_v2/
+/OD_generation_scripts/.ipynb_checkpoints/
+/OD_generation_scripts/__pycache__/
+/OD_generation_scripts/cache/
+/OD_generation_scripts/notebooks/
+/OD_generation_scripts/notebooks_v2/
 /generated_OD/
 /out_Ham_50_lodes/
+using_the_lodes_od_data.ipynb
+using_the_sg_od_data.ipynb

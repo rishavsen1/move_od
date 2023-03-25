@@ -9,8 +9,6 @@ import locations_OSM_SG
 import read_ms_buildings
 import lodes_combs
 import safegraph_combs as sg_combs
-import safegraph_combs_p as sg_combs_p
-import safegraph_combs_pp as sg_combs_pp
 
 st.header('MOVE-OD')
 st.subheader(f'Current working directory:')
@@ -132,9 +130,8 @@ if begin:
             st.success('Locations generated')   
 
         if 'LODES' in choice:
-            # lodes_combs.generate_combs()
             lodes_combs.main()
             st.success('Custom OD generated (LODES)')
         if 'Safegraph' in choice:
-            sg_combs.generate_combs()
+            sg_combs.main()
             st.success('Custom OD generated (Safegraph)')

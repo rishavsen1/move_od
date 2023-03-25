@@ -39,7 +39,7 @@ class Lodes_comb:
             current += delta
 
 
-    def generate_combs(self):
+    def read_data(self):
 
         print('Running lodes_comb.py func')
 
@@ -173,7 +173,7 @@ class Lodes_comb:
         print(f'LODES - Day {day.date()} generated')
 
     def main(self):
-        county_lodes, county_cbg, res_build, com_build, ms_build, times = Lodes_comb.generate_combs(self)
+        county_lodes, county_cbg, res_build, com_build, ms_build, times = Lodes_comb.read_data(self)
 
         #setting the random seed
         np.random.seed(42)
