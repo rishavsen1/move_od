@@ -179,16 +179,18 @@ class Lodes_comb:
         np.random.seed(42)
         random.seed(42)
 
-        days = pd.date_range(self.start_date, self.end_date-timedelta(days=1),freq='d').to_list()
+        days = pd.date_range(self.start_date, self.end_date,freq='d').to_list()
 
         # Lodes_comb.generate_OD(county_lodes, county_cbg, res_build, com_build, ms_build, times)
         weekdays = []
         weekends = []
 
-        weekdays = days
+        # weekdays = days
 
+        print(days)
         for day in days:
-            if day.weekday() <= 4:
+            if day.date().weekday() <= 4:
+                print(day.date().weekday())
                 weekdays.append(day)
             else:
                 weekends.append(day)
@@ -198,7 +200,7 @@ class Lodes_comb:
         day_count = len(weekdays)
             
         processes = []
-        cpu_count = os.cpu_count() -2
+        cpu_count = os.cpu_count() - 1
         while (day_count>0):
 
             num_processes = 1
@@ -211,7 +213,7 @@ class Lodes_comb:
             weekdays = weekdays[num_processes:]
             day_count -= num_processes
 
-            print(f'Running {num_processes} days in parallel. {day_count} days left.')
+            print(f'Running {num_processes} day(s) in parallel. {day_count} day(s) left.')
             for proc in range(num_processes):
                 process = multiprocessing.Process(target=Lodes_comb.generate_OD, args=(self, day_sub[proc], county_lodes, county_cbg, res_build, com_build, ms_build, times))
                 process.start()
@@ -221,4 +223,3 @@ class Lodes_comb:
             for process in processes:
                 process.join()
         print(f'All days generated')
-

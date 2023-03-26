@@ -165,9 +165,9 @@ class Sg_combs:
         np.random.seed(42)
         random.seed(42)
         day_count = len(days)
-                
+
         processes = []
-        cpu_count = os.cpu_count() -2
+        cpu_count = os.cpu_count() - 1
         while (day_count>0):
 
             num_processes = 1
