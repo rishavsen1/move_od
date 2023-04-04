@@ -44,10 +44,7 @@ class Lodes_comb:
         print('Running lodes_comb.py func')
 
         #loading LODES data
-
         county_lodes = pd.read_csv(f'{self.data_path}/county_lodes_2019.csv', dtype={"TRACTCE20_home":"string", "TRACTCE20_work":"string"})
-        # county_lodes.h_geocode = county_lodes.h_geocode.apply(lambda x: int(x/1000))
-        # county_lodes.w_geocode = county_lodes.w_geocode.apply(lambda x: int(x/1000))
         county_lodes.w_geocode = county_lodes.w_geocode.astype(str)
         county_lodes.h_geocode = county_lodes.h_geocode.astype(str)
 

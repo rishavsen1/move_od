@@ -78,7 +78,7 @@ class Sg_combs:
         #TODO: Add self.start_time (morning and evening), and self.end_time (morning and evening), self.timedelta to times_morning (or, times_evening)
 
 
-    def generate_OD(self, day, sg):       
+    def generate_OD(self, day, county_lodes, county_cbg, res_build, com_build, ms_build, sg):       
         # for day in days:
         print(f'Generating OD for {day}')
         prob_matrix_sg = gpd.GeoDataFrame()
@@ -149,7 +149,7 @@ class Sg_combs:
         print(f'Generated for day {day}')
 
 
-    def main(self):
+    def main(self, county_lodes, county_cbg, res_build, com_build, ms_build, sg):
         Sg_combs.read_data(self)
         
         sg = pd.read_csv(f'{self.data_path}/sg_visits_by_day.csv')
