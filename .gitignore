@@ -68,6 +68,9 @@ $RECYCLE.BIN/
 /OD_generation_scripts/notebooks/
 /OD_generation_scripts/notebooks_v2/
 /generated_OD/
+/data_copy/
+/data/
+/OD_subset_outputs/
 /out_Ham_50_lodes/
 using_the_lodes_od_data.ipynb
 using_the_sg_od_data.ipynb
