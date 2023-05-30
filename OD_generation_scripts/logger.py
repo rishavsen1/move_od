@@ -1,40 +1,64 @@
-import logging
 import os
-import sys
-from datetime import datetime
+import logging
+from logging import FileHandler
+import psutil
+
 
 class Logger:
+    def __init__(self, name, level=logging.INFO):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(level)
 
-    def __init__(self, log_file=None, log_level=logging.INFO):
-        self.log_file = log_file or f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-        self.log_level = log_level
-        self._setup_logger()
+        # Create a file handler that creates the file if it doesn't exist
+        log_file = f"{name}.log"
+        if not os.path.exists(os.path.dirname(log_file)):
+            os.makedirs(os.path.dirname(log_file))
+        if not os.path.exists(log_file):
+            open(log_file, "a").close()
+        file_handler = FileHandler(log_file)
+        file_handler.setLevel(level)
 
-    def _setup_logger(self):
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(self.log_level)
+        # Create a console handler for debugging purposes
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.DEBUG)
 
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-
-        # Log to file
-        file_handler = logging.FileHandler(self.log_file)
-        file_handler.setLevel(self.log_level)
+        # Define the log format
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
-
-        # Log to console
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(self.log_level)
         console_handler.setFormatter(formatter)
+
+        # Add the handlers to the logger
+        self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
 
-    def get_logger(self):
-        return self.logger
+        # Log system stats
+        cpu_percent = psutil.cpu_percent()
+        cpu_freq = psutil.cpu_freq()
+        cpu_cores = psutil.cpu_count(logical=False)
+        cpu_threads = psutil.cpu_count(logical=True)
+        virtual_memory = psutil.virtual_memory()
+        ram_size = virtual_memory.total
+        self.logger.info(f"CPU usage: {cpu_percent}%")
+        self.logger.info(f"CPU frequency: {cpu_freq.current}Mhz")
+        self.logger.info(f"CPU cores: {cpu_cores}")
+        self.logger.info(f"CPU threads: {cpu_threads}")
+        self.logger.info(f"RAM size: {ram_size / (1024.0 ** 3)} GB")  # Convert to GB
+        self.logger.info(f"Virtual memory: {virtual_memory}")
 
+        disk_usage = psutil.disk_usage("/")
+        self.logger.info(f"Disk usage: {disk_usage}")
 
-if __name__ == "__main__":
-    logger = Logger().get_logger()
-    logger.info("This is an information message.")
-    logger.warning
+    def info(self, msg):
+        self.logger.info(msg)
+
+    def debug(self, msg):
+        self.logger.debug(msg)
+
+    def warning(self, msg):
+        self.logger.warning(msg)
+
+    def error(self, msg):
+        self.logger.error(msg)
+
+    def critical(self, msg):
+        self.logger.critical(msg)
