@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import datetime
-import streamlit as st
+import pandas as pd
 
 import lodes_read
 import safegraph
@@ -10,9 +10,14 @@ import read_ms_buildings
 import lodes_combs
 import safegraph_combs as sg_combs
 from utils import read_data
-import multiprocessing
+import union_lodes_sg
 
 from logger import Logger
+
+# import ptvsd
+
+# ptvsd.enable_attach(address=("localhost", 5678))
+# ptvsd.wait_for_attach()  # Only include this line if you always want to attach the debugger
 
 os.makedirs("log_files", exist_ok=True)
 
@@ -256,3 +261,7 @@ if begin:
         if "Safegraph" in choice:
             sg_combs.main(county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max)
             st.success("Custom OD generated (Safegraph)")
+
+        days = pd.date_range(start_date, end_date, freq="d").to_list()
+        for day in days:
+            union_lodes_sg.union(output_path, day)

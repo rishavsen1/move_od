@@ -101,8 +101,8 @@ class Sg_combs:
         self.time_slot1 = [
             datetime.strptime(dt.strftime("%H:%M"), "%H:%M")
             for dt in Sg_combs.datetime_range(
-                datetime(2016, 9, 1, 0, 0),
-                datetime(2016, 9, 1, 22, 0),
+                datetime(2016, 9, 1, 4, 0),
+                datetime(2016, 9, 1, 20, 0),
                 timedelta(seconds=self.timedelta),
             )
         ]
@@ -187,6 +187,8 @@ class Sg_combs:
                     ret_time - datetime(1900, 1, 1)
                 ).total_seconds()
                 temp.loc[freq, "return_time_str"] = ret_time.strftime("%H:%M")
+                temp = temp[temp["return_time_secs"] <= 86400]
+                temp = temp[temp["go_time_secs"] <= 86400]
 
                 prob_matrix_sg = pd.concat([prob_matrix_sg, temp], ignore_index=True)
 

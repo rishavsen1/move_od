@@ -93,6 +93,7 @@ class Safegraph:
                     engine="pyarrow",
                     columns=["date_begin", "latitude", "longitude", "poi_cbg"],
                 )
+                temp = temp.astype(int).astype(str)
                 safe_dfs.append(temp)
         safe_df = pd.concat(safe_dfs, ignore_index=True)
 
