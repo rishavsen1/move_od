@@ -14,3 +14,4 @@ multiprocess
 joblib
 pyproj
 ipykernel
+scipy

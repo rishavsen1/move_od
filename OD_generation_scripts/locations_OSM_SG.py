@@ -130,11 +130,26 @@ class locations_OSM_SG:
             lambda x: locations_OSM_SG.func, axis=1
         )
 
+        civ_build["location"] = civ_build.geometry.apply(lambda p: [p.y, p.x])
+        com_build["location"] = com_build.geometry.apply(lambda p: [p.y, p.x])
+
+        combined_locations = pd.concat(
+                [
+                    com_build[["GEOID", "geometry"]],
+                    civ_build[["GEOID", "geometry"]],
+                ]
+            )
+        
         if self.sg_enabled:
-            locations_OSM_SG.find_locations_SG(self, com_build, civ_build)
+            locations_OSM_SG.find_locations_SG(self, combined_locations)
+
+        else:            
+            combined_locations.GEOID = combined_locations.GEOID.astype(str).apply(lambda x: x.split(".")[0])
+            combined_locations.to_csv(f"{self.output_path}/county_work_locations.csv", index=False)
+
 
     # ## adding safegraph poi locations
-    def find_locations_SG(self, com_build, civ_build):
+    def find_locations_SG(self, combined_locations):
         # sg = gpd.read_file('path to safegraph file') # path removed due to privacy concerns
         self.sg = pd.read_csv(f"{self.output_path}/sg_poi_cbgs.csv")
         self.sg.longitude = self.sg.longitude.astype(float)
@@ -144,21 +159,16 @@ class locations_OSM_SG:
 
         # adding in safegraph POI locations to OSM work locations
 
-        civ_build["location"] = civ_build.geometry.apply(lambda p: [p.y, p.x])
-        # try:
-        com_build["location"] = com_build.geometry.apply(lambda p: [p.y, p.x])
-
-        t1 = pd.concat(
+        combined_locations_sg = pd.concat(
             [
                 self.sg[["poi_cbg", "geometry"]].rename({"poi_cbg": "GEOID"}, axis=1),
-                com_build[["GEOID", "geometry"]],
-                civ_build[["GEOID", "geometry"]],
+                combined_locations[["GEOID", "geometry"]],
             ]
         )
-        # t1 = com_build[['GEOID', 'geometry']].append(civ_build[['GEOID', 'geometry']])
-        t1.GEOID = t1.GEOID.astype(str).apply(lambda x: x.split(".")[0])
+        # combined_locations = com_build[['GEOID', 'geometry']].append(civ_build[['GEOID', 'geometry']])
+        combined_locations_sg.GEOID = combined_locations.GEOID.astype(str).apply(lambda x: x.split(".")[0])
         # saving work buildings to file
-        t1.to_csv(f"{self.output_path}/county_work_loc_poi_com_civ.csv", index=False)
+        combined_locations_sg.to_csv(f"{self.output_path}/county_work_locations.csv", index=False)
         self.logger.info("Finished locations_OSM_Sg")
         return
 

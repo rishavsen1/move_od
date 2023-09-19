@@ -51,7 +51,7 @@ days_count = (end_date - start_date).days
 timedelta = st.number_input("Select a value of Timedelta (in seconds)", value=15)
 
 times = st.number_input(
-    "Choose number of slots to generate for:", value=2, min_value=0, max_value=10
+    "Choose number of slots to generate for:", value=1, min_value=0, max_value=10
 )
 time_start = []
 time_end = []
@@ -62,6 +62,11 @@ for time in range(times):
     time_end.append(
         st.time_input(f"Enter end time for slot {time+1}", datetime.time(11, 00))
     )
+
+for s, e in zip(time_start, time_end):
+    if s>=e:
+        st.error("Start time should be greater than end time")
+        break
 
 year_range = []
 if start_date.year == end_date.year:
@@ -143,7 +148,6 @@ output_path = st.text_input(
 
 begin = st.button("Begin process")
 
-logger = Logger(f"../log_files/{county}_{state}_{start_date}_{end_date}.log")
 
 cpus = os.cpu_count() - 1
 run_lodes_sg_parallel = False
@@ -155,12 +159,16 @@ if cpus > days_count:
 
 
 if begin:
+    logger = Logger(f"{output_path}/{county}_{state}_{start_date}_{end_date}.log")
     if not os.path.exists(output_path):
         os.makedirs(output_path, exist_ok=True)
-    if not os.path.exists(output_path + "/lodes_combs"):
-        os.mkdir(output_path + "/lodes_combs")
-    if not os.path.exists(output_path + "/safegraph_combs"):
-        os.mkdir(output_path + "/safegraph_combs")
+    
+    if 'LODES' in choice: 
+        if not os.path.exists(output_path + "/lodes_combs"):
+            os.mkdir(output_path + "/lodes_combs")
+    if 'Safegraph' in choice:
+        if not os.path.exists(output_path + "/safegraph_combs"):
+            os.mkdir(output_path + "/safegraph_combs")
 
     with st.spinner("In Progress..."):
         lodes_read = lodes_read.Lodes_gen(
@@ -232,14 +240,15 @@ if begin:
 
         if os.path.exists(
             f"{output_path}/county_residential_buildings.csv"
-        ) and os.path.exists(f"{output_path}/county_work_loc_poi_com_civ.csv"):
+        ) and os.path.exists(f"{output_path}/county_work_locations.csv"):
             st.success("Locations already present")
+
         else:
             locations.find_locations_OSM()
             st.success("Locations generated")
 
         county_cbg, res_build, com_build, ms_build, county_lodes, sg = read_data(
-            data_path=output_path, lodes=lodes_enabled, sg_enabled=sg_enabled
+            data_path=output_path, lodes=lodes_enabled, sg_enabled=sg_enabled, ms_enabled=ms_enabled
         )
 
         # for proc in range(len(choice)):
@@ -264,4 +273,4 @@ if begin:
 
         days = pd.date_range(start_date, end_date, freq="d").to_list()
         for day in days:
-            union_lodes_sg.union(output_path, day)
+            union_lodes_sg.union(output_path, day, sg_enabled)

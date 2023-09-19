@@ -84,7 +84,7 @@ class Lodes_comb:
 
         # # loading work buildings
         # com_build = pd.read_csv(
-        #     f"{self.data_path}/county_work_loc_poi_com_civ.csv", index_col=0
+        #     f"{self.data_path}/county_work_locations.csv", index_col=0
         # )
         # com_build = gpd.GeoDataFrame(
         #     com_build, geometry=gpd.GeoSeries.from_wkt(com_build.geometry)

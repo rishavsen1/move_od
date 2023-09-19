@@ -26,7 +26,7 @@ def write_to_file(output_path, file_path, file_name, df):
     df.to_csv(f"{output_path}/{file_path}/{file_name}", index=False)
 
 
-def read_data(data_path, lodes=False, sg_enabled=False):
+def read_data(data_path, lodes=False, sg_enabled=False, ms_enabled=False):
     # print("Running safegraph_comb.py")
 
     # loading geometry data
@@ -52,7 +52,7 @@ def read_data(data_path, lodes=False, sg_enabled=False):
 
     # loading work buildings
     com_build = pd.read_csv(
-        f"{data_path}/county_work_loc_poi_com_civ.csv", index_col=[0]
+        f"{data_path}/county_work_locations.csv", index_col=[0]
     )
 
     com_build = gpd.GeoDataFrame(
@@ -63,12 +63,15 @@ def read_data(data_path, lodes=False, sg_enabled=False):
     com_build.GEOID = com_build.GEOID.astype(str)
 
     # loading all buildings (MS dataset)
-    ms_build = pd.read_csv(f"{data_path}/county_buildings_MS.csv")
-    ms_build = gpd.GeoDataFrame(
-        ms_build, geometry=gpd.GeoSeries.from_wkt(ms_build.geo_centers)
-    )
-    ms_build.GEOID = ms_build.GEOID.astype(str)
-    ms_build["location"] = ms_build.geometry.apply(lambda p: [p.y, p.x])
+    if ms_enabled:
+        ms_build = pd.read_csv(f"{data_path}/county_buildings_MS.csv")
+        ms_build = gpd.GeoDataFrame(
+            ms_build, geometry=gpd.GeoSeries.from_wkt(ms_build.geo_centers)
+        )
+        ms_build.GEOID = ms_build.GEOID.astype(str)
+        ms_build["location"] = ms_build.geometry.apply(lambda p: [p.y, p.x])
+    else:
+        ms_build = pd.DataFrame()
 
     sg = pd.DataFrame()
     county_lodes = pd.DataFrame()
