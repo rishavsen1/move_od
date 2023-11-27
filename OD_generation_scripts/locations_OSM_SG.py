@@ -21,7 +21,9 @@ import pandas as pd
 
 
 class locations_OSM_SG:
-    def __init__(self, county, area, county_cbg, sg_enabled, output_path, logger):
+    def __init__(
+        self, county, area, county_cbg, sg_enabled, output_path, logger, od_option
+    ):
         self.COUNTY = county
         self.AREA = area
         self.county_cbg = gpd.read_file(county_cbg)
@@ -29,6 +31,7 @@ class locations_OSM_SG:
         self.sg_enabled = sg_enabled
         self.output_path = output_path
         self.logger = logger
+        self.od_option = od_option
         self.logger.info("Initliazing locations_OSM_SG.py")
 
     def func(row):
@@ -36,7 +39,14 @@ class locations_OSM_SG:
 
     def find_locations_OSM(self):
         self.logger.info("Running locations_OSM_SG.py func")
-        self.county_cbg = self.county_cbg[self.county_cbg.COUNTYFP == self.COUNTY]
+        if self.od_option == "Origin and Destination in same CBG":
+            self.county_cbg = self.county_cbg[self.county_cbg.COUNTYFP == self.COUNTY]
+        elif (self.od_option == "Only Origin in CBG") or (
+            self.od_option == "Only Destination in CBG"
+        ):
+            self.county_cbg = self.county_cbg
+
+        # self.county_cbg = self.county_cbg[self.county_cbg.COUNTYFP == self.COUNTY]
         self.county_cbg = self.county_cbg.to_crs("epsg:4326")
 
         minx, miny, maxx, maxy = self.county_cbg.geometry.total_bounds
@@ -47,7 +57,6 @@ class locations_OSM_SG:
         # buildings = ox.geometries_from_bbox(34.854382885097905, 35.935532323321, -84.19759521484375, -85.553161621093756, tags)
 
         # aggregating all residential tags
-        pd.set_option("display.max_columns", None)
         res_build = (
             buildings[
                 (buildings.building == "residential")
@@ -67,9 +76,8 @@ class locations_OSM_SG:
             .reset_index()[["osmid", "geometry", "nodes", "building", "name", "source"]]
             .sjoin(self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]])
         )
-        res_build.geometry = res_build.geometry.apply(
-            lambda x: x.centroid if x.geom_type in ["Polygon", "MultiPolygon"] else x
-        )
+        mask = res_build.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
+        res_build.loc[mask, "geometry"] = res_build.loc[mask, "geometry"].centroid
 
         # saving residential buildings
         # TODO: Error Handling
@@ -118,35 +126,37 @@ class locations_OSM_SG:
             .sjoin(self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]])
         )
 
-        com_build.geometry = com_build.geometry.apply(
-            lambda x: x.centroid if x.geom_type in ["Polygon", "MultiPolygon"] else x
-        )
-        civ_build.geometry = civ_build.geometry.apply(
-            lambda x: x.centroid if x.geom_type in ["Polygon", "MultiPolygon"] else x
-        )
+        mask = com_build.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
+        com_build.loc[mask, "geometry"] = com_build.loc[mask, "geometry"].centroid
+
+        mask = civ_build.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
+        civ_build.loc[mask, "geometry"] = civ_build.loc[mask, "geometry"].centroid
 
         # converting the default internal point of each cbg to a shapely Point
-        res_build["intpt"] = res_build[["INTPTLAT", "INTPTLON"]].apply(
-            lambda x: locations_OSM_SG.func, axis=1
+        res_build["intpt"] = locations_OSM_SG.func(
+            res_build["INTPTLAT"], res_build["INTPTLON"]
         )
 
-        civ_build["location"] = civ_build.geometry.apply(lambda p: [p.y, p.x])
-        com_build["location"] = com_build.geometry.apply(lambda p: [p.y, p.x])
+        civ_build["location"] = civ_build.geometry.y, civ_build.geometry.x
+        com_build["location"] = com_build.geometry.y, com_build.geometry.x
 
         combined_locations = pd.concat(
-                [
-                    com_build[["GEOID", "geometry"]],
-                    civ_build[["GEOID", "geometry"]],
-                ]
-            )
-        
+            [
+                com_build[["GEOID", "geometry"]],
+                civ_build[["GEOID", "geometry"]],
+            ]
+        )
+
         if self.sg_enabled:
             locations_OSM_SG.find_locations_SG(self, combined_locations)
 
-        else:            
-            combined_locations.GEOID = combined_locations.GEOID.astype(str).apply(lambda x: x.split(".")[0])
-            combined_locations.to_csv(f"{self.output_path}/county_work_locations.csv", index=False)
-
+        else:
+            combined_locations.GEOID = combined_locations.GEOID.astype(str).apply(
+                lambda x: x.split(".")[0]
+            )
+            combined_locations.to_csv(
+                f"{self.output_path}/county_work_locations.csv", index=False
+            )
 
     # ## adding safegraph poi locations
     def find_locations_SG(self, combined_locations):
@@ -166,9 +176,14 @@ class locations_OSM_SG:
             ]
         )
         # combined_locations = com_build[['GEOID', 'geometry']].append(civ_build[['GEOID', 'geometry']])
-        combined_locations_sg.GEOID = combined_locations.GEOID.astype(str).apply(lambda x: x.split(".")[0])
+        combined_locations_sg["GEOID"] = (
+            combined_locations["GEOID"].astype(str).str.split(".").str[0]
+        )
+
         # saving work buildings to file
-        combined_locations_sg.to_csv(f"{self.output_path}/county_work_locations.csv", index=False)
+        combined_locations_sg.to_csv(
+            f"{self.output_path}/county_work_locations.csv", index=False
+        )
         self.logger.info("Finished locations_OSM_Sg")
         return
 

@@ -28,10 +28,10 @@ st.write(os.getcwd())
 st.write(
     "You can find FIPS codes here: [Federal Information Processing System (FIPS) Codes for States and Counties](https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt)"
 )
-fips = st.text_input("Enter County's FIPS code", value="037")
-county = st.text_input("Enter County's name", value="Davidson")
+fips = st.text_input("Enter County's FIPS code", value="013")
+county = st.text_input("Enter County's name", value="Contra Costa")
 city = st.text_input("Enter City's name", value="Nashville")
-state = st.text_input("Enter State", value="TN")
+state = st.text_input("Enter State", value="CA")
 
 st.write(
     "You can download necessary Shapefiles here: [Federal Information Processing System (FIPS) Codes for States and Counties](https://www.census.gov/cgi-bin/geo/shapefiles/index.php)"
@@ -50,8 +50,10 @@ days_count = (end_date - start_date).days
 
 timedelta = st.number_input("Select a value of Timedelta (in seconds)", value=15)
 
-times = st.number_input(
-    "Choose number of slots to generate for:", value=1, min_value=0, max_value=10
+times = int(
+    st.number_input(
+        "Choose number of slots to generate for:", value=1, min_value=0, max_value=10
+    )
 )
 time_start = []
 time_end = []
@@ -64,7 +66,7 @@ for time in range(times):
     )
 
 for s, e in zip(time_start, time_end):
-    if s>=e:
+    if s >= e:
         st.error("Start time should be greater than end time")
         break
 
@@ -82,7 +84,7 @@ data_path = st.text_input(
 
 county_cbg = st.text_input(
     "Enter Block group shapefile path",
-    value=f"{data_path}/tl_2022_47_bg/tl_2022_47_bg.shp",
+    value=f"{data_path}/tl_2022_06_bg/tl_2022_06_bg.shp",
 )
 
 choice = st.multiselect(
@@ -95,13 +97,13 @@ county_lodes_paths = []
 if "LODES" in choice:
     lodes_enabled = True
     number_lodes = st.number_input(
-        "Enter number of LODES file paths available", value=6, min_value=0, max_value=20
+        "Enter number of LODES file paths available", value=1, min_value=0, max_value=20
     )
     for lodes in range(number_lodes):
         county_lodes_paths.append(
             st.text_input(
                 f"Enter LODES path {lodes+1}",
-                value=f"{data_path}/lodes/tn_od_main_JT0{lodes}_2019.csv",
+                value=f"{data_path}/lodes/ca_od_main_JT0{lodes}_2021.csv",
             )
         )
 
@@ -137,13 +139,24 @@ if ms_enabled:
         "Microsoft Buildings footprint can be downloaded from [Global ML Buildings Footprint by Bing Maps](https://github.com/microsoft/GlobalMLBuildingFootprints)"
     )
     builds = st.text_input(
-        "Enter MS buildings file path", value=f"{data_path}/Tennessee.geojson"
+        "Enter MS buildings file path", value=f"{data_path}/California.geojson"
     )
 
 output_path = st.text_input(
     "Enter output file path",
     value=f"../generated_OD/{county}_{state}_{start_date}_{end_date}",
 )
+
+od_option = st.radio(
+    "Choose an option:",
+    (
+        "Origin and Destination in same County",
+        "Only Origin in County",
+        "Only Destination in County",
+    ),
+)
+
+st.write("You selected:", od_option)
 
 
 begin = st.button("Begin process")
@@ -162,20 +175,20 @@ if begin:
     logger = Logger(f"{output_path}/{county}_{state}_{start_date}_{end_date}.log")
     if not os.path.exists(output_path):
         os.makedirs(output_path, exist_ok=True)
-    
-    if 'LODES' in choice: 
+
+    if "LODES" in choice:
         if not os.path.exists(output_path + "/lodes_combs"):
             os.mkdir(output_path + "/lodes_combs")
-    if 'Safegraph' in choice:
+    if "Safegraph" in choice:
         if not os.path.exists(output_path + "/safegraph_combs"):
             os.mkdir(output_path + "/safegraph_combs")
 
     with st.spinner("In Progress..."):
         lodes_read = lodes_read.Lodes_gen(
-            fips, county_lodes_paths, county_cbg, output_path, logger
+            fips, county_lodes_paths, county_cbg, output_path, logger, od_option
         )
         locations = locations_OSM_SG.locations_OSM_SG(
-            fips, county, county_cbg, sg_enabled, output_path, logger
+            fips, county, county_cbg, sg_enabled, output_path, logger, od_option
         )
         lodes_combs = lodes_combs.Lodes_comb(
             county_cbg,
@@ -248,7 +261,10 @@ if begin:
             st.success("Locations generated")
 
         county_cbg, res_build, com_build, ms_build, county_lodes, sg = read_data(
-            data_path=output_path, lodes=lodes_enabled, sg_enabled=sg_enabled, ms_enabled=ms_enabled
+            data_path=output_path,
+            lodes=lodes_enabled,
+            sg_enabled=sg_enabled,
+            ms_enabled=ms_enabled,
         )
 
         # for proc in range(len(choice)):
