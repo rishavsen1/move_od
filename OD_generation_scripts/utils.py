@@ -42,7 +42,7 @@ def read_data(data_path, lodes=False, sg_enabled=False, ms_enabled=False):
 
     # loading residential buildings
     res_build = pd.read_csv(
-        f"{data_path}/county_residential_buildings.csv", index_col=[0]
+        f"{data_path}/county_residential_buildings.csv",
     )
     res_build = gpd.GeoDataFrame(
         res_build, geometry=gpd.GeoSeries.from_wkt(res_build.geometry)
@@ -52,7 +52,7 @@ def read_data(data_path, lodes=False, sg_enabled=False, ms_enabled=False):
 
     # loading work buildings
     com_build = pd.read_csv(
-        f"{data_path}/county_work_locations.csv", index_col=[0]
+        f"{data_path}/county_work_locations.csv",
     )
 
     com_build = gpd.GeoDataFrame(

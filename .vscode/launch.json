@@ -8,11 +8,11 @@
       "module": "streamlit",
       "args": [
         "run",
-        "/home/rishav/Programs/contra_costa/OD_generation_scripts/front_app.py",
+        "/home/cc/rishav/contra_costa/OD_generation_scripts/front_app.py",
         "--server.port",
         "8509"
       ],
-      "cwd": "~/Programs/contra_costa/OD_generation_scripts",
+      "cwd": "/home/cc/rishav/contra_costa/OD_generation_scripts",
       "env": {
         "PYTHONUNBUFFERED": "1"
       },

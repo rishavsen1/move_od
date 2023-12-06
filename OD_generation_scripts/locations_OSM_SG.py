@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
-
+import os
+import math
 import osmnx as ox
 import matplotlib.pyplot as plt
 from shapely.geometry import Polygon, Point
 import geopandas as gpd
 import pandas as pd
+import multiprocessing
+from multiprocessing import Pool
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 # COUNTY = '037'
@@ -20,13 +24,27 @@ import pandas as pd
 # sg = pd.read_csv('../data/sg_poi_cbgs.csv') # path removed due to privacy concerns
 
 
+def process_section(miny, maxy, minx, maxx, tags):
+    while True:
+        try:
+            geoms = ox.geometries_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
+            # print(geoms.columns)
+            geoms = geoms[["geometry", "building"]]
+            print(f"Got geometries for {miny, maxy, minx, maxx, tags}")
+            return geoms
+        except Exception as e:
+            print("Exception:", e)
+
+
 class locations_OSM_SG:
     def __init__(
         self, county, area, county_cbg, sg_enabled, output_path, logger, od_option
     ):
         self.COUNTY = county
         self.AREA = area
-        self.county_cbg = gpd.read_file(county_cbg)
+        self.county_cbg = gpd.read_file(county_cbg)[
+            ["GEOID", "COUNTYFP", "geometry", "INTPTLAT", "INTPTLON"]
+        ]
         # self.sg = pd.read_csv(sg)
         self.sg_enabled = sg_enabled
         self.output_path = output_path
@@ -34,15 +52,31 @@ class locations_OSM_SG:
         self.od_option = od_option
         self.logger.info("Initliazing locations_OSM_SG.py")
 
-    def func(row):
-        str(Point(gpd.points_from_xy(row.INTPTLAT, row.INTPTLON)[0]))
+    def split_bbox(self, miny, maxy, minx, maxx, num_splits):
+        width = maxx - minx
+        # height = maxy - miny
+        slice_width = width / num_splits
+        # slice_height = height / num_splits
+        splits = [
+            (
+                miny,
+                maxy,
+                minx + i * slice_width,
+                minx + (i + 1) * slice_width,
+            )
+            for i in range(num_splits)
+        ]
+        return splits
+
+    # def func(row):
+    #     str(Point(gpd.points_from_xy(row.INTPTLAT, row.INTPTLON)[0]))
 
     def find_locations_OSM(self):
         self.logger.info("Running locations_OSM_SG.py func")
-        if self.od_option == "Origin and Destination in same CBG":
+        if self.od_option == "Origin and Destination in same County":
             self.county_cbg = self.county_cbg[self.county_cbg.COUNTYFP == self.COUNTY]
-        elif (self.od_option == "Only Origin in CBG") or (
-            self.od_option == "Only Destination in CBG"
+        elif (self.od_option == "Only Origin in County") or (
+            self.od_option == "Only Destination in County"
         ):
             self.county_cbg = self.county_cbg
 
@@ -51,15 +85,44 @@ class locations_OSM_SG:
 
         minx, miny, maxx, maxy = self.county_cbg.geometry.total_bounds
 
-        # finding all buildings
-        tags = {"building": True}
-        buildings = ox.geometries_from_bbox(miny, maxy, maxx, minx, tags)
-        # buildings = ox.geometries_from_bbox(34.854382885097905, 35.935532323321, -84.19759521484375, -85.553161621093756, tags)
+        if os.path.exists(f"{self.output_path}/county_all_buildings.geojson"):
+            buildings = gpd.read_file(
+                f"{self.output_path}/county_all_buildings.geojson"
+            )
+        else:
+            num_workers = multiprocessing.cpu_count() * 2
+            splits = self.split_bbox(miny, maxy, minx, maxx, num_workers)
+            func_args = [(s[0], s[1], s[2], s[3], {"building": True}) for s in splits]
+
+            with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                futures = [
+                    executor.submit(process_section, *args) for args in func_args
+                ]
+
+                buildings = [future.result() for future in futures]
+
+                buildings = pd.concat(buildings)
+                buildings.to_file(
+                    f"{self.output_path}/county_all_buildings.geojson", driver="GeoJSON"
+                )
+                # finding all buildings
+                # tags = {"building": True}
+                # buildings = ox.geometries_from_bbox(miny, maxy, maxx, minx, tags)
+                # buildings = ox.geometries_from_bbox(34.854382885097905, 35.935532323321, -84.19759521484375, -85.553161621093756, tags)
+
+        mean_lon = minx + (maxx - minx) / 2
+        mean_lat = miny + (maxy - miny) / 2
+        zone_number = math.floor((mean_lon + 180) / 6) + 1
+        if mean_lat >= 0:
+            utm_epsg = f"326{str(zone_number)}"
+        else:
+            utm_epsg = f"327{str(zone_number)}"
 
         # aggregating all residential tags
         res_build = (
             buildings[
-                (buildings.building == "residential")
+                (buildings.building == "yes")
+                | (buildings.building == "residential")
                 | (buildings.building == "bungalow")
                 | (buildings.building == "cabin")
                 | (buildings.building == "dormitory")
@@ -72,12 +135,20 @@ class locations_OSM_SG:
                 | (buildings.building == "houseboat")
                 | (buildings.building == "static_caravan")
                 | (buildings.building == "terrace")
-            ]
-            .reset_index()[["osmid", "geometry", "nodes", "building", "name", "source"]]
-            .sjoin(self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]])
+            ][["geometry", "building"]].sjoin(
+                self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]]
+            )
+            # .reset_index()[["geometry", "building"]]
         )
         mask = res_build.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
+        res_build = res_build.to_crs(f"epsg:{utm_epsg}")
         res_build.loc[mask, "geometry"] = res_build.loc[mask, "geometry"].centroid
+        res_build = res_build.to_crs("epsg:4326")
+
+        # converting the default internal point of each cbg to a shapely Point
+        points = gpd.points_from_xy(res_build["INTPTLON"], res_build["INTPTLAT"])
+        res_build["intpt"] = points.astype(str)
+        res_build["location"] = list(zip(res_build.geometry.y, res_build.geometry.x))
 
         # saving residential buildings
         # TODO: Error Handling
@@ -103,9 +174,10 @@ class locations_OSM_SG:
                 | (buildings.building == "retail")
                 | (buildings.building == "supermarket")
                 | (buildings.building == "warehouse")
-            ]
-            .reset_index()[["osmid", "geometry", "nodes", "building", "name", "source"]]
-            .sjoin(self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]])
+            ][["geometry", "building"]].sjoin(
+                self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]]
+            )
+            # .reset_index()[["geometry", "building"]]
         )
         civ_build = (
             buildings[
@@ -121,29 +193,36 @@ class locations_OSM_SG:
                 | (buildings.building == "train_station")
                 | (buildings.building == "transportation")
                 | (buildings.building == "university")
-            ]
-            .reset_index()[["osmid", "geometry", "nodes", "building", "name", "source"]]
-            .sjoin(self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]])
+            ][["geometry", "building"]].sjoin(
+                self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]]
+            )
+            # .reset_index()[["geometry", "building"]]
         )
 
         mask = com_build.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
+        com_build = com_build.to_crs(f"epsg:{utm_epsg}")
         com_build.loc[mask, "geometry"] = com_build.loc[mask, "geometry"].centroid
+        com_build = com_build.to_crs("epsg:4326")
 
         mask = civ_build.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
+        civ_build = civ_build.to_crs(f"epsg:{utm_epsg}")
         civ_build.loc[mask, "geometry"] = civ_build.loc[mask, "geometry"].centroid
+        civ_build = civ_build.to_crs("epsg:4326")
 
-        # converting the default internal point of each cbg to a shapely Point
-        res_build["intpt"] = locations_OSM_SG.func(
-            res_build["INTPTLAT"], res_build["INTPTLON"]
-        )
+        # res_build["intpt"] = locations_OSM_SG.apply(lambda row: self.func(row))
 
-        civ_build["location"] = civ_build.geometry.y, civ_build.geometry.x
-        com_build["location"] = com_build.geometry.y, com_build.geometry.x
+        civ_build["location"] = list(zip(civ_build.geometry.y, civ_build.geometry.x))
+        com_build["location"] = list(zip(com_build.geometry.y, com_build.geometry.x))
+
+        points = gpd.points_from_xy(civ_build["INTPTLON"], civ_build["INTPTLAT"])
+        civ_build["intpt"] = points.astype(str)
+        points = gpd.points_from_xy(com_build["INTPTLON"], com_build["INTPTLAT"])
+        com_build["intpt"] = points.astype(str)
 
         combined_locations = pd.concat(
             [
-                com_build[["GEOID", "geometry"]],
-                civ_build[["GEOID", "geometry"]],
+                com_build[["GEOID", "geometry", "intpt"]],
+                civ_build[["GEOID", "geometry", "intpt"]],
             ]
         )
 

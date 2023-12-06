@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import datetime
 import pandas as pd
+import multiprocessing
 
 import lodes_read
 import safegraph
@@ -18,6 +19,8 @@ from logger import Logger
 
 # ptvsd.enable_attach(address=("localhost", 5678))
 # ptvsd.wait_for_attach()  # Only include this line if you always want to attach the debugger
+
+print("Streamlit started")
 
 os.makedirs("log_files", exist_ok=True)
 

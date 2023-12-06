@@ -32,7 +32,9 @@ class Lodes_gen:
         temp_dfs = []
 
         for i, lodes_path in enumerate(self.county_lodes_paths):
-            temp_df = pd.read_csv(lodes_path).rename(columns={"S000": "total_jobs"})
+            temp_df = pd.read_csv(lodes_path).rename(columns={"S000": "total_jobs"})[
+                ["h_geocode", "w_geocode", "total_jobs"]
+            ]
             # self.df = self.df.append(temp_df)
             temp_dfs.append(temp_df)
 
@@ -43,15 +45,20 @@ class Lodes_gen:
         lodes.h_geocode = lodes.h_geocode.astype(str)
         lodes.w_geocode = lodes.w_geocode.astype(str)
         # initially in form of blocks - converting to match cbgs
-        # lodes.h_geocode = lodes.h_geocode.apply(lambda x: x[0:-3])
-        # lodes.w_geocode = lodes.w_geocode.apply(lambda x: x[0:-3])
+        lodes["h_geocode"] = lodes["h_geocode"].str[:-3]
+        lodes["w_geocode"] = lodes["w_geocode"].str[:-3]
+
+        lodes.h_geocode = lodes.h_geocode.str.lstrip("0")
+        lodes.w_geocode = lodes.w_geocode.str.lstrip("0")
 
         # self.logger.info(lodes.head())
 
         # read Hamilton county blocks (too large to store in github)
         # can be downloaded from : https://vanderbilt365-my.sharepoint.com/:f:/g/personal/rishav_sen_vanderbilt_edu/EuB8qV7yx3ZDoxpXq232E1cBJ1Q3Qlzr1cQOvP3UKWqmHw?e=cc1z5h
 
-        cbgs = gpd.read_file(self.county_cbg)
+        cbgs = gpd.read_file(self.county_cbg)[["GEOID", "COUNTYFP", "geometry"]]
+        cbgs.GEOID = cbgs.GEOID.astype(str)
+        cbgs.GEOID = cbgs.GEOID.str.lstrip("0")
 
         if self.od_option == "Origin and Destination in same County":
             cbgs = cbgs[cbgs.COUNTYFP == self.COUNTY][["GEOID", "geometry"]]
@@ -59,9 +66,6 @@ class Lodes_gen:
             cbgs_origin = cbgs[cbgs.COUNTYFP == self.COUNTY][["GEOID", "geometry"]]
         elif self.od_option == "Only Destination in County":
             cbgs_dest = cbgs[cbgs.COUNTYFP == self.COUNTY][["GEOID", "geometry"]]
-
-        cbgs.GEOID = cbgs.GEOID.astype(str)
-        cbgs.GEOID = cbgs.GEOID.str.lstrip("0")
 
         # self.logger.info(cbgs.head())
 

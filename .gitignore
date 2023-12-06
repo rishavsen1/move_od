@@ -66,7 +66,7 @@ $RECYCLE.BIN/
 /OD_generation_scripts/__pycache__/
 /OD_generation_scripts/cache/
 /OD_generation_scripts/notebooks/
-/OD_generation_scripts/notebooks_v2/
+/OD_generation_scripts/log_files/
 /generated_OD/
 /data_copy/
 /data/
@@ -74,3 +74,5 @@ $RECYCLE.BIN/
 /out_Ham_50_lodes/
 using_the_lodes_od_data.ipynb
 using_the_sg_od_data.ipynb
+.venv
+/plots
