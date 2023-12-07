@@ -49,7 +49,7 @@ After installing Streamlit, run the command:
 
 ```
 $ cd OD_generation_scripts
-$ streamlit run front_app.py
+$ streamlit run front_app.py --browser.gatherUsageStats False
 ```
 
 Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced in the chosen output folder.

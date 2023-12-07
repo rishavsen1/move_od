@@ -15,11 +15,6 @@ import union_lodes_sg
 
 from logger import Logger
 
-# import ptvsd
-
-# ptvsd.enable_attach(address=("localhost", 5678))
-# ptvsd.wait_for_attach()  # Only include this line if you always want to attach the debugger
-
 print("Streamlit started")
 
 os.makedirs("log_files", exist_ok=True)
