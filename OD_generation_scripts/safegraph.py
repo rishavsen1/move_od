@@ -15,7 +15,7 @@ import json
 import glob
 
 pd.options.display.float_format = "{:.2f}".format
-
+from utils import marginal_dist
 
 # COUNTY = '037'
 # CITY = 'Nashville'
@@ -24,9 +24,7 @@ pd.options.display.float_format = "{:.2f}".format
 
 
 class Safegraph:
-    def __init__(
-        self, county, city, county_cbg, safe_df, data_path, start_date, end_date, logger
-    ):
+    def __init__(self, county, city, county_cbg, safe_df, data_path, start_date, end_date, logger):
         self.COUNTY = county
         self.county_cbg = county_cbg
         self.CITY = city
@@ -38,7 +36,7 @@ class Safegraph:
 
         self.logger.info("Initliazing safegraph.py")
 
-    def find_norm_dist(bucketed_data):
+    def find_norm_dist(self, bucketed_data):
         total_values = 0
         total_sum = 0
         squared_diff_sum = 0
@@ -54,7 +52,6 @@ class Safegraph:
             total_sum += mid_point * count
 
         mean = total_sum / total_values
-
         squared_diff_sum = 0
 
         for key, count in bucketed_data.items():
@@ -74,7 +71,7 @@ class Safegraph:
         normal_distribution = norm(loc=mean, scale=std_dev)
         return normal_distribution
 
-    def prev_weekday(d, weekday):
+    def prev_weekday(self, d, weekday):
         days_behind = d.weekday()
         return d - timedelta(days_behind)
 
@@ -98,18 +95,21 @@ class Safegraph:
         safe_df = pd.concat(safe_dfs, ignore_index=True)
 
         safe_df["poi_cbg"] = safe_df["poi_cbg"].astype(str)
+        safe_df = marginal_dist(
+            safe_df,
+            "home_cbg",
+            "poi_cbg",
+        )
         safe_df.merge(county_cbg, left_on="poi_cbg", right_on="GEOID").to_csv(
             f"{self.data_path}/sg_poi_cbgs.csv", index=False
         )
 
-    def by_day(row):
+    def by_day(self, row):
         week = 7
         temp = pd.DataFrame()
         start_date = row["date_begin"]
-        visitor_homes = list(
-            chain.from_iterable([[k] * v for k, v in row["visitor_home_cbgs"].items()])
-        )
-        norm_dist = Safegraph.find_norm_dist(row["bucketed_dwell_times"])
+        visitor_homes = list(chain.from_iterable([[k] * v for k, v in row["visitor_home_cbgs"].items()]))
+        norm_dist = self.find_norm_dist(row["bucketed_dwell_times"])
 
         if len(visitor_homes) > 0:
             home_cbg = random.sample(visitor_homes, 1)[0]
@@ -140,8 +140,8 @@ class Safegraph:
         safe_dfs = []
         safe_df_days = pd.DataFrame()
 
-        start_prev_monday = Safegraph.prev_weekday(self.start_date, 0)
-        end_prev_monday = Safegraph.prev_weekday(self.end_date, 0)
+        start_prev_monday = self.prev_weekday(self.start_date, 0)
+        end_prev_monday = self.prev_weekday(self.end_date, 0)
 
         for safe_df_name in self.safe_df:
             for path in glob.glob(safe_df_name + "*.parquet"):
@@ -162,15 +162,9 @@ class Safegraph:
 
         safe_df = pd.concat(safe_dfs, ignore_index=True)
 
-        safe_df["visitor_home_cbgs"] = safe_df["visitor_home_cbgs"].apply(
-            lambda x: json.loads(x)
-        )
-        safe_df["bucketed_dwell_times"] = safe_df["bucketed_dwell_times"].apply(
-            lambda x: json.loads(x)
-        )
-        safe_df["visits_by_day"] = safe_df["visits_by_day"].apply(
-            lambda x: ast.literal_eval(x)
-        )
+        safe_df["visitor_home_cbgs"] = safe_df["visitor_home_cbgs"].apply(lambda x: json.loads(x))
+        safe_df["bucketed_dwell_times"] = safe_df["bucketed_dwell_times"].apply(lambda x: json.loads(x))
+        safe_df["visits_by_day"] = safe_df["visits_by_day"].apply(lambda x: ast.literal_eval(x))
 
         safe_days = []
         for idx, row in safe_df.iterrows():
@@ -178,20 +172,13 @@ class Safegraph:
         safe_df_days = pd.concat(safe_days, ignore_index=True)
 
         safe_df_days = safe_df_days[
-            (safe_df_days["date"] >= self.start_date)
-            & (safe_df_days["date"] <= self.end_date)
+            (safe_df_days["date"] >= self.start_date) & (safe_df_days["date"] <= self.end_date)
         ]
 
-        safe_df_days = safe_df_days.merge(
-            county_cbg[["GEOID"]], left_on="home_cbg", right_on="GEOID"
-        )
-        safe_df_days = safe_df_days.merge(
-            county_cbg[["GEOID"]], left_on="poi_cbg", right_on="GEOID"
-        )
+        safe_df_days = safe_df_days.merge(county_cbg[["GEOID"]], left_on="home_cbg", right_on="GEOID")
+        safe_df_days = safe_df_days.merge(county_cbg[["GEOID"]], left_on="poi_cbg", right_on="GEOID")
 
-        safe_df_days = (
-            safe_df_days.groupby(["date", "home_cbg", "poi_cbg"]).sum().reset_index()
-        )
+        safe_df_days = safe_df_days.groupby(["date", "home_cbg", "poi_cbg"]).sum().reset_index()
 
         safe_df_days.to_csv(f"{self.data_path}/sg_visits_by_day.csv", index=False)
 

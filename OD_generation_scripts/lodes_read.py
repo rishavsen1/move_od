@@ -3,6 +3,7 @@
 
 import geopandas as gpd
 import pandas as pd
+from utils import marginal_dist
 
 # county_lodes_paths = ['../data/lodes/tn_od_main_JT00_2019.csv', '../data/lodes/tn_od_main_JT01_2019.csv',
 #                     '../data/lodes/tn_od_main_JT02_2019.csv', '../data/lodes/tn_od_main_JT03_2019.csv',
@@ -11,9 +12,7 @@ import pandas as pd
 
 
 class Lodes_gen:
-    def __init__(
-        self, county, county_lodes_paths, county_cbg, output_path, logger, od_option
-    ):
+    def __init__(self, county, county_lodes_paths, county_cbg, output_path, logger, od_option):
         self.COUNTY = county
         self.county_lodes_paths = county_lodes_paths
         self.county_cbg = county_cbg
@@ -23,7 +22,7 @@ class Lodes_gen:
         self.od_option = od_option
         self.logger.info("\n Running lodes_read.py")
 
-    def generate(self):
+    def generate(self, sample_size):
         # loading parts of the available data
         # these files are not included here, can be downloaded from: https://lehd.ces.census.gov/data/lodes/LODES7/tn/od/
 
@@ -42,6 +41,7 @@ class Lodes_gen:
 
         # filtering out duplicates
         lodes = self.df.drop_duplicates()
+
         lodes.h_geocode = lodes.h_geocode.astype(str)
         lodes.w_geocode = lodes.w_geocode.astype(str)
         # initially in form of blocks - converting to match cbgs
@@ -72,9 +72,7 @@ class Lodes_gen:
         # filtering TN LODES data for cbgs only in selected county
         if self.od_option == "Origin and Destination in same County":
             area_lodes = (
-                pd.merge(
-                    lodes, cbgs, left_on="h_geocode", right_on="GEOID", how="inner"
-                )
+                pd.merge(lodes, cbgs, left_on="h_geocode", right_on="GEOID", how="inner")
                 .merge(cbgs, left_on="w_geocode", right_on="GEOID", how="inner")
                 .sort_values("total_jobs", ascending=False)
                 .reset_index(drop=True)
@@ -94,20 +92,17 @@ class Lodes_gen:
             )
         elif self.od_option == "Only Destination in County":
             area_lodes = (
-                pd.merge(
-                    lodes, cbgs, left_on="h_geocode", right_on="GEOID", how="inner"
-                )
+                pd.merge(lodes, cbgs, left_on="h_geocode", right_on="GEOID", how="inner")
                 .merge(cbgs_dest, left_on="w_geocode", right_on="GEOID", how="inner")
                 .sort_values("total_jobs", ascending=False)
                 .reset_index(drop=True)
             )
 
-        area_lodes = area_lodes.drop(
-            ["GEOID_x", "GEOID_y", "geometry_x", "geometry_y"], axis=1
-        )
+        area_lodes = area_lodes.drop(["GEOID_x", "GEOID_y", "geometry_x", "geometry_y"], axis=1)
         # self.logger.info(area_lodes.head())
         # it is stored at the block level (smaller area than CBG)
-        area_lodes.to_csv(f"{self.output_path}/county_lodes_2019.csv", index=False)
+        area_lodes = marginal_dist(area_lodes, "h_geocode", "w_geocode", sample_size)
+        area_lodes.to_csv(f"{self.output_path}/county_lodes.csv", index=False)
 
         # additional
 

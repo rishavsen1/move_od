@@ -15,7 +15,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-class Sg_combs:
+class SgCombs:
     def __init__(
         self,
         county_cbg,
@@ -40,16 +40,16 @@ class Sg_combs:
         self.logger = logger
         self.logger.info("Initliazing safegraph_combs.py")
 
-    def intpt_func(row):
+    def intpt_func(self, row):
         return Point(row["INTPTLON"], row["INTPTLAT"])
 
-    def func_home_pt(row):
-        return Point(float(row.home_loc_lon), float(row.home_loc_lat))
+    def func_origin_pt(self, row):
+        return Point(float(row.origin_loc_lon), float(row.origin_loc_lat))
 
-    def func_work_pt(row):
-        return Point(float(row.work_loc_lon), float(row.work_loc_lat))
+    def func_dest_pt(self, row):
+        return Point(float(row.dest_loc_lon), float(row.dest_loc_lat))
 
-    def datetime_range(start, end, delta):
+    def datetime_range(self, start, end, delta):
         current = start
         while current < end:
             yield current
@@ -81,7 +81,7 @@ class Sg_combs:
 
         # # loading work buildings
         # self.com_build = pd.read_csv(
-        #     f"{self.data_path}/county_work_locations.csv", index_col=[0]
+        #     f"{self.data_path}/county_dest_locations.csv", index_col=[0]
         # )
         # self.com_build = gpd.GeoDataFrame(
         #     self.com_build, geometry=gpd.GeoSeries.from_wkt(self.com_build.geometry)
@@ -100,7 +100,7 @@ class Sg_combs:
 
         self.time_slot1 = [
             datetime.strptime(dt.strftime("%H:%M"), "%H:%M")
-            for dt in Sg_combs.datetime_range(
+            for dt in self.datetime_range(
                 datetime(2016, 9, 1, 4, 0),
                 datetime(2016, 9, 1, 20, 0),
                 timedelta(seconds=self.timedelta),
@@ -115,35 +115,27 @@ class Sg_combs:
         prob_matrix_sg = gpd.GeoDataFrame()
 
         for idx, movement in sg.iterrows():
-            res = self.res_build[self.res_build.GEOID == movement.home_cbg].reset_index(
-                drop=True
-            )
+            res = self.res_build[self.res_build.GEOID == movement.origin_cbg].reset_index(drop=True)
             if res.empty:
                 if self.ms_enabled:
                     res = (
-                        self.ms_build[self.ms_build.GEOID == movement.home_cbg]
+                        self.ms_build[self.ms_build.GEOID == movement.origin_cbg]
                         .sample(n=int(movement.visits), random_state=42, replace=True)
                         .reset_index(drop=True)
                     )
                 if res.empty:
-                    res = self.county_cbg[
-                        self.county_cbg.GEOID == movement.home_cbg
-                    ].reset_index(drop=True)
+                    res = self.county_cbg[self.county_cbg.GEOID == movement.origin_cbg].reset_index(drop=True)
 
-            com = self.com_build[self.com_build.GEOID == movement.poi_cbg].reset_index(
-                drop=True
-            )
+            com = self.com_build[self.com_build.GEOID == movement.dest_cbg].reset_index(drop=True)
             if com.empty:
                 if self.ms_enabled:
                     com = (
-                        self.ms_build[self.ms_build.GEOID == movement.poi_cbg]
+                        self.ms_build[self.ms_build.GEOID == movement.dest_cbg]
                         .sample(n=int(movement.visits), random_state=42, replace=True)
                         .reset_index(drop=True)
                     )
                 if com.empty:
-                    com = self.county_cbg[
-                        self.county_cbg.GEOID == movement.poi_cbg
-                    ].reset_index(drop=True)
+                    com = self.county_cbg[self.county_cbg.GEOID == movement.dest_cbg].reset_index(drop=True)
 
             r = res.reset_index(drop=True)
             c = com.reset_index(drop=True)
@@ -163,47 +155,41 @@ class Sg_combs:
 
                 temp = gpd.GeoDataFrame()
 
-                temp.loc[freq, "home_cbg"] = movement.home_cbg
-                temp.loc[freq, "poi_cbg"] = movement.poi_cbg
+                temp.loc[freq, "origin_cbg"] = movement.origin_cbg
+                temp.loc[freq, "dest_cbg"] = movement.dest_cbg
                 temp.loc[freq, "visits"] = movement.visits
-                temp.loc[freq, "home_loc_lat"] = r_df.location[0]
-                temp.loc[freq, "home_loc_lon"] = r_df.location[1]
-                temp.loc[freq, "work_loc_lat"] = c_df.location[0]
-                temp.loc[freq, "work_loc_lon"] = c_df.location[1]
+                temp.loc[freq, "origin_loc_lat"] = r_df.location[0]
+                temp.loc[freq, "origin_loc_lon"] = r_df.location[1]
+                temp.loc[freq, "dest_loc_lat"] = c_df.location[0]
+                temp.loc[freq, "dest_loc_lon"] = c_df.location[1]
 
                 # TODO: use realistic starting times instead of randomly sampled ones
 
                 time_slot = np.random.choice(self.time_slot1, size=1, replace=True)
 
                 temp.loc[freq, "go_time"] = time_slot[0].time()
-                temp.loc[freq, "go_time_secs"] = (
-                    time_slot[0] - datetime(1900, 1, 1)
-                ).total_seconds()
+                temp.loc[freq, "go_time_secs"] = (time_slot[0] - datetime(1900, 1, 1)).total_seconds()
                 temp.loc[freq, "go_time_str"] = time_slot[0].strftime("%H:%M")
 
                 ret_time = time_slot[0] + timedelta(minutes=(movement["dwell_time"]))
                 temp.loc[freq, "return_time"] = ret_time.time()
-                temp.loc[freq, "return_time_secs"] = (
-                    ret_time - datetime(1900, 1, 1)
-                ).total_seconds()
+                temp.loc[freq, "return_time_secs"] = (ret_time - datetime(1900, 1, 1)).total_seconds()
                 temp.loc[freq, "return_time_str"] = ret_time.strftime("%H:%M")
                 temp = temp[temp["return_time_secs"] <= 86400]
                 temp = temp[temp["go_time_secs"] <= 86400]
 
                 prob_matrix_sg = pd.concat([prob_matrix_sg, temp], ignore_index=True)
 
-        prob_matrix_sg["home_geom"] = prob_matrix_sg[
-            ["home_loc_lat", "home_loc_lon"]
-        ].apply(lambda row: Sg_combs.func_home_pt(row), axis=1)
+        prob_matrix_sg["origin_geom"] = prob_matrix_sg[["origin_loc_lat", "origin_loc_lon"]].apply(
+            lambda row: self.func_origin_pt(row), axis=1
+        )
 
-        prob_matrix_sg["work_geom"] = prob_matrix_sg[
-            ["work_loc_lat", "work_loc_lon"]
-        ].apply(lambda row: Sg_combs.func_work_pt(row), axis=1)
+        prob_matrix_sg["dest_geom"] = prob_matrix_sg[["dest_loc_lat", "dest_loc_lon"]].apply(
+            lambda row: self.func_dest_pt(row), axis=1
+        )
 
         # convert the lat and lon points to shapely Points
-        prob_matrix_sg.to_csv(
-            f"{self.data_path}/safegraph_combs/sg_{day}.csv", index=False
-        )
+        prob_matrix_sg.to_csv(f"{self.data_path}/safegraph_combs/sg_{day}.csv", index=False)
         self.logger.info(f"Generated for day {day}")
 
     def main(self, county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max):
@@ -212,11 +198,11 @@ class Sg_combs:
         self.com_build = com_build
         self.ms_build = ms_build
 
-        Sg_combs.read_data(self)
+        self.read_data(self)
 
         sg = pd.read_csv(f"{self.data_path}/sg_visits_by_day.csv")
-        sg["home_cbg"] = sg["home_cbg"].astype(str)
-        sg["poi_cbg"] = sg["poi_cbg"].astype(str)
+        sg["origin_cbg"] = sg["origin_cbg"].astype(str)
+        sg["dest_cbg"] = sg["dest_cbg"].astype(str)
 
         days = sg.date.unique()
 
@@ -241,12 +227,10 @@ class Sg_combs:
             days = days[num_processes:]
             day_count -= num_processes
 
-            self.logger.info(
-                f"Running {num_processes} days in parallel. {day_count} days left."
-            )
+            self.logger.info(f"Running {num_processes} days in parallel. {day_count} days left.")
             for proc in range(num_processes):
                 process = multiprocessing.Process(
-                    target=Sg_combs.generate_OD,
+                    target=self.generate_OD,
                     args=(self, day_sub[proc], sg[sg.date == day_sub[proc]]),
                 )
                 process.start()

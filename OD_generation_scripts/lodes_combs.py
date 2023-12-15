@@ -38,11 +38,11 @@ class Lodes_comb:
     def intpt_func(row):
         return Point(row["INTPTLON"], row["INTPTLAT"])
 
-    def func_home_pt(row):
-        return Point(row.home_loc_lon, row.home_loc_lat)
+    def func_origin_pt(row):
+        return Point(row.origin_loc_lon, row.origin_loc_lat)
 
-    def func_work_pt(row):
-        return Point(row.work_loc_lon, row.work_loc_lat)
+    def func_dest_pt(row):
+        return Point(row.dest_loc_lon, row.dest_loc_lat)
 
     def datetime_range(start, end, delta):
         current = start
@@ -84,7 +84,7 @@ class Lodes_comb:
 
         # # loading work buildings
         # com_build = pd.read_csv(
-        #     f"{self.data_path}/county_work_locations.csv", index_col=0
+        #     f"{self.data_path}/county_dest_locations.csv", index_col=0
         # )
         # com_build = gpd.GeoDataFrame(
         #     com_build, geometry=gpd.GeoSeries.from_wkt(com_build.geometry)
@@ -108,15 +108,11 @@ class Lodes_comb:
             county_lodes.groupby(["h_geocode", "w_geocode"])
             .agg(total_jobs=("total_jobs", sum))
             .reset_index()
-            .merge(
-                county_cbg[["GEOID", "geometry"]], left_on="h_geocode", right_on="GEOID"
-            )
-            .rename({"geometry": "home_geom"}, axis=1)
+            .merge(county_cbg[["GEOID", "geometry"]], left_on="h_geocode", right_on="GEOID")
+            .rename({"geometry": "origin_geom"}, axis=1)
             .drop("GEOID", axis=1)
-            .merge(
-                county_cbg[["GEOID", "geometry"]], left_on="w_geocode", right_on="GEOID"
-            )
-            .rename({"geometry": "work_geom"}, axis=1)
+            .merge(county_cbg[["GEOID", "geometry"]], left_on="w_geocode", right_on="GEOID")
+            .rename({"geometry": "dest_geom"}, axis=1)
             .drop("GEOID", axis=1)
             .sort_values("total_jobs", ascending=False)
             .reset_index(drop=True)
@@ -158,18 +154,14 @@ class Lodes_comb:
         # return county_lodes, county_cbg, res_build, com_build, ms_build, times
         return county_lodes, county_cbg, res_build, com_build, ms_build, times
 
-    def generate_OD(
-        self, day, county_lodes, county_cbg, res_build, com_build, ms_build, times
-    ):
+    def generate_OD(self, day, county_lodes, county_cbg, res_build, com_build, ms_build, times):
         # for day in day_count:
         self.logger.info(f"Generating results for day {day.date()}")
         prob_matrix = pd.DataFrame()
 
         # self.logger.info(county_lodes.head())
         for idx, movement in county_lodes.iterrows():
-            res = res_build[res_build.GEOID == movement.h_geocode].reset_index(
-                drop=True
-            )
+            res = res_build[res_build.GEOID == movement.h_geocode].reset_index(drop=True)
             if res.empty:
                 if self.ms_enabled:
                     res = (
@@ -178,13 +170,9 @@ class Lodes_comb:
                         .reset_index(drop=True)
                     )
                 if res.empty:
-                    res = county_cbg[
-                        county_cbg.GEOID == movement.h_geocode
-                    ].reset_index(drop=True)
+                    res = county_cbg[county_cbg.GEOID == movement.h_geocode].reset_index(drop=True)
 
-            com = com_build[com_build.GEOID == movement.w_geocode].reset_index(
-                drop=True
-            )
+            com = com_build[com_build.GEOID == movement.w_geocode].reset_index(drop=True)
             if com.empty:
                 if self.ms_enabled:
                     com = (
@@ -193,9 +181,7 @@ class Lodes_comb:
                         .reset_index(drop=True)
                     )
                 if com.empty:
-                    com = county_cbg[
-                        county_cbg.GEOID == movement.w_geocode
-                    ].reset_index(drop=True)
+                    com = county_cbg[county_cbg.GEOID == movement.w_geocode].reset_index(drop=True)
 
             r = res.reset_index(drop=True)
             c = com.reset_index(drop=True)
@@ -217,9 +203,7 @@ class Lodes_comb:
 
                 for time in range(len(times)):
                     # self.logger.info(times[time])
-                    time_slot.append(
-                        np.random.choice(times[time], size=1, replace=True)
-                    )
+                    time_slot.append(np.random.choice(times[time], size=1, replace=True))
 
                 # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
                 # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
@@ -229,35 +213,29 @@ class Lodes_comb:
                 temp.loc[job, "h_geocode"] = movement.h_geocode
                 temp.loc[job, "w_geocode"] = movement.w_geocode
                 temp.loc[job, "total_jobs"] = movement.total_jobs
-                temp.loc[job, "home_loc_lat"] = r_df.location[0]
-                temp.loc[job, "home_loc_lon"] = r_df.location[1]
-                temp.loc[job, "work_loc_lat"] = c_df.location[0]
-                temp.loc[job, "work_loc_lon"] = c_df.location[1]
+                temp.loc[job, "origin_loc_lat"] = r_df.location[0]
+                temp.loc[job, "origin_loc_lon"] = r_df.location[1]
+                temp.loc[job, "dest_loc_lat"] = c_df.location[0]
+                temp.loc[job, "dest_loc_lon"] = c_df.location[1]
 
                 for time in range(len(times)):
                     temp.loc[job, f"time_{time}"] = time_slot[time][0].time()
-                    temp.loc[job, f"time_{time}_secs"] = (
-                        time_slot[time][0] - datetime(1900, 1, 1)
-                    ).total_seconds()
-                    temp.loc[job, f"time_{time}_str"] = time_slot[time][0].strftime(
-                        "%H:%M"
-                    )
+                    temp.loc[job, f"time_{time}_secs"] = (time_slot[time][0] - datetime(1900, 1, 1)).total_seconds()
+                    temp.loc[job, f"time_{time}_str"] = time_slot[time][0].strftime("%H:%M")
 
                 prob_matrix = pd.concat([prob_matrix, temp], ignore_index=True)
 
         # convert the lat and lon points to shapely Points
-        prob_matrix["home_geom"] = prob_matrix[["home_loc_lat", "home_loc_lon"]].apply(
-            lambda row: Lodes_comb.func_home_pt(row), axis=1
+        prob_matrix["origin_geom"] = prob_matrix[["origin_loc_lat", "origin_loc_lon"]].apply(
+            lambda row: Lodes_comb.func_origin_pt(row), axis=1
         )
-        prob_matrix["work_geom"] = prob_matrix[["work_loc_lat", "work_loc_lon"]].apply(
-            lambda row: Lodes_comb.func_work_pt(row), axis=1
+        prob_matrix["dest_geom"] = prob_matrix[["dest_loc_lat", "dest_loc_lon"]].apply(
+            lambda row: Lodes_comb.func_dest_pt(row), axis=1
         )
         prob_matrix.h_geocode = prob_matrix.h_geocode.astype(str)
         prob_matrix.w_geocode = prob_matrix.w_geocode.astype(str)
 
-        prob_matrix.to_csv(
-            f"{self.data_path}/lodes_combs/lodes_{day.date()}.csv", index=False
-        )
+        prob_matrix.to_csv(f"{self.data_path}/lodes_combs/lodes_{day.date()}.csv", index=False)
         self.logger.info(f"LODES - Day {day.date()} generated")
 
     def main(
@@ -276,9 +254,7 @@ class Lodes_comb:
             com_build,
             ms_build,
             times,
-        ) = Lodes_comb.read_data(
-            self, county_lodes, county_cbg, res_build, com_build, ms_build
-        )
+        ) = Lodes_comb.read_data(self, county_lodes, county_cbg, res_build, com_build, ms_build)
 
         # setting the random seed
         np.random.seed(42)
@@ -299,9 +275,7 @@ class Lodes_comb:
                 weekdays.append(day)
             else:
                 weekends.append(day)
-                pd.DataFrame().to_csv(
-                    f"{self.data_path}/lodes_combs/lodes_{day.date()}.csv", index=False
-                )
+                pd.DataFrame().to_csv(f"{self.data_path}/lodes_combs/lodes_{day.date()}.csv", index=False)
 
         day_count = len(weekdays)
 
@@ -318,9 +292,7 @@ class Lodes_comb:
             weekdays = weekdays[num_processes:]
             day_count -= num_processes
 
-            self.logger.info(
-                f"Running {num_processes} day(s) in parallel. {day_count} day(s) left."
-            )
+            self.logger.info(f"Running {num_processes} day(s) in parallel. {day_count} day(s) left.")
 
             for proc in range(num_processes):
                 process = multiprocessing.Process(

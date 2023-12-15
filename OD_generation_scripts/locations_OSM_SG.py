@@ -36,15 +36,11 @@ def process_section(miny, maxy, minx, maxx, tags):
             print("Exception:", e)
 
 
-class locations_OSM_SG:
-    def __init__(
-        self, county, area, county_cbg, sg_enabled, output_path, logger, od_option
-    ):
+class Locations_OSM_SG:
+    def __init__(self, county, area, county_cbg, sg_enabled, output_path, logger, od_option):
         self.COUNTY = county
         self.AREA = area
-        self.county_cbg = gpd.read_file(county_cbg)[
-            ["GEOID", "COUNTYFP", "geometry", "INTPTLAT", "INTPTLON"]
-        ]
+        self.county_cbg = gpd.read_file(county_cbg)[["GEOID", "COUNTYFP", "geometry", "INTPTLAT", "INTPTLON"]]
         # self.sg = pd.read_csv(sg)
         self.sg_enabled = sg_enabled
         self.output_path = output_path
@@ -75,9 +71,7 @@ class locations_OSM_SG:
         self.logger.info("Running locations_OSM_SG.py func")
         if self.od_option == "Origin and Destination in same County":
             self.county_cbg = self.county_cbg[self.county_cbg.COUNTYFP == self.COUNTY]
-        elif (self.od_option == "Only Origin in County") or (
-            self.od_option == "Only Destination in County"
-        ):
+        elif (self.od_option == "Only Origin in County") or (self.od_option == "Only Destination in County"):
             self.county_cbg = self.county_cbg
 
         # self.county_cbg = self.county_cbg[self.county_cbg.COUNTYFP == self.COUNTY]
@@ -86,25 +80,19 @@ class locations_OSM_SG:
         minx, miny, maxx, maxy = self.county_cbg.geometry.total_bounds
 
         if os.path.exists(f"{self.output_path}/county_all_buildings.geojson"):
-            buildings = gpd.read_file(
-                f"{self.output_path}/county_all_buildings.geojson"
-            )
+            buildings = gpd.read_file(f"{self.output_path}/county_all_buildings.geojson")
         else:
             num_workers = multiprocessing.cpu_count() * 2
             splits = self.split_bbox(miny, maxy, minx, maxx, num_workers)
             func_args = [(s[0], s[1], s[2], s[3], {"building": True}) for s in splits]
 
             with ThreadPoolExecutor(max_workers=num_workers) as executor:
-                futures = [
-                    executor.submit(process_section, *args) for args in func_args
-                ]
+                futures = [executor.submit(process_section, *args) for args in func_args]
 
                 buildings = [future.result() for future in futures]
 
                 buildings = pd.concat(buildings)
-                buildings.to_file(
-                    f"{self.output_path}/county_all_buildings.geojson", driver="GeoJSON"
-                )
+                buildings.to_file(f"{self.output_path}/county_all_buildings.geojson", driver="GeoJSON")
                 # finding all buildings
                 # tags = {"building": True}
                 # buildings = ox.geometries_from_bbox(miny, maxy, maxx, minx, tags)
@@ -135,9 +123,7 @@ class locations_OSM_SG:
                 | (buildings.building == "houseboat")
                 | (buildings.building == "static_caravan")
                 | (buildings.building == "terrace")
-            ][["geometry", "building"]].sjoin(
-                self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]]
-            )
+            ][["geometry", "building"]].sjoin(self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]])
             # .reset_index()[["geometry", "building"]]
         )
         mask = res_build.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
@@ -153,13 +139,9 @@ class locations_OSM_SG:
         # saving residential buildings
         # TODO: Error Handling
         try:
-            res_build.to_csv(
-                f"{self.output_path}/county_residential_buildings.csv", index=False
-            )
+            res_build.to_csv(f"{self.output_path}/county_residential_buildings.csv", index=False)
         except FileNotFoundError:
-            self.logger.info(
-                f"File not found: {self.output_path}/county_residential_buildings.csv"
-            )
+            self.logger.info(f"File not found: {self.output_path}/county_residential_buildings.csv")
         except:
             self.logger.info("General exception")
 
@@ -174,9 +156,7 @@ class locations_OSM_SG:
                 | (buildings.building == "retail")
                 | (buildings.building == "supermarket")
                 | (buildings.building == "warehouse")
-            ][["geometry", "building"]].sjoin(
-                self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]]
-            )
+            ][["geometry", "building"]].sjoin(self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]])
             # .reset_index()[["geometry", "building"]]
         )
         civ_build = (
@@ -193,9 +173,7 @@ class locations_OSM_SG:
                 | (buildings.building == "train_station")
                 | (buildings.building == "transportation")
                 | (buildings.building == "university")
-            ][["geometry", "building"]].sjoin(
-                self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]]
-            )
+            ][["geometry", "building"]].sjoin(self.county_cbg[["GEOID", "geometry", "INTPTLAT", "INTPTLON"]])
             # .reset_index()[["geometry", "building"]]
         )
 
@@ -227,15 +205,11 @@ class locations_OSM_SG:
         )
 
         if self.sg_enabled:
-            locations_OSM_SG.find_locations_SG(self, combined_locations)
+            self.find_locations_SG(self, combined_locations)
 
         else:
-            combined_locations.GEOID = combined_locations.GEOID.astype(str).apply(
-                lambda x: x.split(".")[0]
-            )
-            combined_locations.to_csv(
-                f"{self.output_path}/county_work_locations.csv", index=False
-            )
+            combined_locations.GEOID = combined_locations.GEOID.astype(str).apply(lambda x: x.split(".")[0])
+            combined_locations.to_csv(f"{self.output_path}/county_work_locations.csv", index=False)
 
     # ## adding safegraph poi locations
     def find_locations_SG(self, combined_locations):
@@ -255,14 +229,10 @@ class locations_OSM_SG:
             ]
         )
         # combined_locations = com_build[['GEOID', 'geometry']].append(civ_build[['GEOID', 'geometry']])
-        combined_locations_sg["GEOID"] = (
-            combined_locations["GEOID"].astype(str).str.split(".").str[0]
-        )
+        combined_locations_sg["GEOID"] = combined_locations["GEOID"].astype(str).str.split(".").str[0]
 
         # saving work buildings to file
-        combined_locations_sg.to_csv(
-            f"{self.output_path}/county_work_locations.csv", index=False
-        )
+        combined_locations_sg.to_csv(f"{self.output_path}/county_work_locations.csv", index=False)
         self.logger.info("Finished locations_OSM_Sg")
         return
 

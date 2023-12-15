@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import datetime
 import pandas as pd
-import multiprocessing
+import numpy as np
 
 import lodes_read
 import safegraph
@@ -26,21 +26,31 @@ st.write(os.getcwd())
 st.write(
     "You can find FIPS codes here: [Federal Information Processing System (FIPS) Codes for States and Counties](https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt)"
 )
-fips = st.text_input("Enter County's FIPS code", value="013")
-county = st.text_input("Enter County's name", value="Contra Costa")
-city = st.text_input("Enter City's name", value="Nashville")
-state = st.text_input("Enter State", value="CA")
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    fips = st.text_input("Enter County's FIPS code", value="013")
+
+with col2:
+    county = st.text_input("Enter County's name", value="Contra Costa")
+with col3:
+    city = st.text_input("Enter City's name", value="")
+with col4:
+    state = st.text_input("Enter State", value="CA")
 
 st.write(
     "You can download necessary Shapefiles here: [Federal Information Processing System (FIPS) Codes for States and Counties](https://www.census.gov/cgi-bin/geo/shapefiles/index.php)"
 )
 
-st.write(
-    "The program expects you to gather all the required data under a common 'data' folder"
-)
+st.write("The program expects you to gather all the required data under a common 'data' folder")
 
-start_date = st.date_input("Enter start date", datetime.date(2021, 1, 4))
-end_date = st.date_input("Enter end date", start_date, min_value=start_date)
+col1, col2 = st.columns(2)
+
+with col1:
+    start_date = st.date_input("Enter start date", datetime.date(2021, 1, 4))
+with col2:
+    end_date = st.date_input("Enter end date", start_date, min_value=start_date)
+
 if end_date < start_date:
     st.error("End date should be greater than or equal to start date")
 
@@ -48,20 +58,18 @@ days_count = (end_date - start_date).days
 
 timedelta = st.number_input("Select a value of Timedelta (in seconds)", value=15)
 
-times = int(
-    st.number_input(
-        "Choose number of slots to generate for:", value=1, min_value=0, max_value=10
-    )
-)
+times = st.number_input("Choose number of slots to generate for:", value=2, min_value=0, max_value=10)
 time_start = []
 time_end = []
-for time in range(times):
-    time_start.append(
-        st.time_input(f"Enter start time for slot {time+1}", datetime.time(6, 00))
-    )
-    time_end.append(
-        st.time_input(f"Enter end time for slot {time+1}", datetime.time(11, 00))
-    )
+
+for time in range(int(times)):
+    col1, col2 = st.columns(2)
+
+    with col1:
+        time_start.append(st.time_input(f"Enter start time for slot {time+1}", datetime.time(6, 00)))
+
+    with col2:
+        time_end.append(st.time_input(f"Enter end time for slot {time+1}", datetime.time(11, 00)))
 
 for s, e in zip(time_start, time_end):
     if s >= e:
@@ -85,18 +93,16 @@ county_cbg = st.text_input(
     value=f"{data_path}/tl_2022_06_bg/tl_2022_06_bg.shp",
 )
 
-choice = st.multiselect(
-    "Choose type of data to generate for:", ["LODES", "Safegraph"], default=["LODES"]
-)
+choice = st.multiselect("Choose type of data to generate for:", ["LODES", "Safegraph"], default=["LODES"])
 
 lodes_enabled = False
 county_lodes_paths = []
 
+sample_size = st.number_input("Enter number of samples to generate", value=100, min_value=0, max_value=int(1e15))
+
 if "LODES" in choice:
     lodes_enabled = True
-    number_lodes = st.number_input(
-        "Enter number of LODES file paths available", value=1, min_value=0, max_value=20
-    )
+    number_lodes = st.number_input("Enter number of LODES file paths available", value=1, min_value=0, max_value=20)
     for lodes in range(number_lodes):
         county_lodes_paths.append(
             st.text_input(
@@ -118,9 +124,7 @@ if "Safegraph" in choice:
             )
         )
 else:
-    sg_enabled = st.checkbox(
-        "Use Safegraph data to get additional POI(workplace) locations?"
-    )
+    sg_enabled = st.checkbox("Use Safegraph data to get additional POI(workplace) locations?")
     if sg_enabled:
         for idx, year in enumerate(year_range):
             safe_df.append(
@@ -136,9 +140,7 @@ if ms_enabled:
     st.write(
         "Microsoft Buildings footprint can be downloaded from [Global ML Buildings Footprint by Bing Maps](https://github.com/microsoft/GlobalMLBuildingFootprints)"
     )
-    builds = st.text_input(
-        "Enter MS buildings file path", value=f"{data_path}/California.geojson"
-    )
+    builds = st.text_input("Enter MS buildings file path", value=f"{data_path}/California.geojson")
 
 output_path = st.text_input(
     "Enter output file path",
@@ -146,7 +148,7 @@ output_path = st.text_input(
 )
 
 od_option = st.radio(
-    "Choose an option:",
+    "Choose an option for OD generation:",
     (
         "Origin and Destination in same County",
         "Only Origin in County",
@@ -182,41 +184,11 @@ if begin:
             os.mkdir(output_path + "/safegraph_combs")
 
     with st.spinner("In Progress..."):
-        lodes_read = lodes_read.Lodes_gen(
-            fips, county_lodes_paths, county_cbg, output_path, logger, od_option
-        )
-        locations = locations_OSM_SG.locations_OSM_SG(
-            fips, county, county_cbg, sg_enabled, output_path, logger, od_option
-        )
-        lodes_combs = lodes_combs.Lodes_comb(
-            county_cbg,
-            output_path,
-            ms_enabled,
-            timedelta,
-            time_start,
-            time_end,
-            start_date,
-            end_date,
-            logger,
-        )
-        sg_combs = sg_combs.Sg_combs(
-            county_cbg,
-            output_path,
-            ms_enabled,
-            timedelta,
-            time_start,
-            time_end,
-            start_date,
-            end_date,
-            logger,
-        )
-
-        if os.path.exists(f"{output_path}/county_lodes_2019.csv") and os.path.exists(
-            f"{output_path}/county_cbg.csv"
-        ):
+        if os.path.exists(f"{output_path}/county_lodes_2019.csv") and os.path.exists(f"{output_path}/county_cbg.csv"):
             st.success("LODES filtered data already present")
         else:
-            lodes_read.generate()
+            lodes_read = lodes_read.Lodes_gen(fips, county_lodes_paths, county_cbg, output_path, logger, od_option)
+            lodes_read.generate(sample_size)
             st.success("LODES data filtered")
 
         if sg_enabled:
@@ -243,18 +215,19 @@ if begin:
             if os.path.exists(f"{output_path}/county_buildings_MS.csv"):
                 st.success("MS Buildings filtered already present")
             else:
-                ms_builds = read_ms_buildings.MS_Buildings(
-                    fips, county_cbg, builds, output_path, logger
-                )
+                ms_builds = read_ms_buildings.MS_Buildings(fips, county_cbg, builds, output_path, logger)
                 ms_builds.buildings()
                 st.success("MS Buildings data filtered")
 
-        if os.path.exists(
-            f"{output_path}/county_residential_buildings.csv"
-        ) and os.path.exists(f"{output_path}/county_work_locations.csv"):
+        if os.path.exists(f"{output_path}/county_residential_buildings.csv") and os.path.exists(
+            f"{output_path}/county_work_locations.csv"
+        ):
             st.success("Locations already present")
 
         else:
+            locations = locations_OSM_SG.Locations_OSM_SG(
+                fips, county, county_cbg, sg_enabled, output_path, logger, od_option
+            )
             locations.find_locations_OSM()
             st.success("Locations generated")
 
@@ -263,6 +236,7 @@ if begin:
             lodes=lodes_enabled,
             sg_enabled=sg_enabled,
             ms_enabled=ms_enabled,
+            sample_size=sample_size,
         )
 
         # for proc in range(len(choice)):
@@ -272,6 +246,17 @@ if begin:
         # process = multiprocessing.Process(target=sg_combs.main, args=(county_cbg,\
         #                             res_build, com_build, ms_build, sg, sg_cpu_max))
         if "LODES" in choice:
+            lodes_combs = lodes_combs.Lodes_comb(
+                county_cbg,
+                output_path,
+                ms_enabled,
+                timedelta,
+                time_start,
+                time_end,
+                start_date,
+                end_date,
+                logger,
+            )
             lodes_combs.main(
                 county_cbg,
                 res_build,
@@ -282,6 +267,17 @@ if begin:
             )
             st.success("Custom OD generated (LODES)")
         if "Safegraph" in choice:
+            sg_combs = sg_combs.Sg_combs(
+                county_cbg,
+                output_path,
+                ms_enabled,
+                timedelta,
+                time_start,
+                time_end,
+                start_date,
+                end_date,
+                logger,
+            )
             sg_combs.main(county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max)
             st.success("Custom OD generated (Safegraph)")
 
