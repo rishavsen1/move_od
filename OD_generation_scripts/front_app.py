@@ -281,6 +281,7 @@ if begin:
             sg_combs.main(county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max)
             st.success("Custom OD generated (Safegraph)")
 
-        days = pd.date_range(start_date, end_date, freq="d").to_list()
-        for day in days:
-            union_lodes_sg.union(output_path, day, sg_enabled)
+        if "Safegraph" in choice and "LODES" in choice:
+            days = pd.date_range(start_date, end_date, freq="d").to_list()
+            for day in days:
+                union_lodes_sg.union(output_path, day, sg_enabled)
