@@ -58,7 +58,7 @@ days_count = (end_date - start_date).days
 
 timedelta = st.number_input("Select a value of Timedelta (in seconds)", value=15)
 
-times = st.number_input("Choose number of slots to generate for:", value=2, min_value=0, max_value=10)
+times = st.number_input("Choose number of slots to generate for:", value=1, min_value=0, max_value=10)
 start_times = []
 end_times = []
 
@@ -165,6 +165,7 @@ begin = st.button("Begin process")
 cpus = os.cpu_count() - 1
 run_lodes_sg_parallel = False
 
+lodes_cpu_max = 1
 if cpus > days_count:
     run_lodes_sg_parallel = True
     lodes_cpu_max = days_count

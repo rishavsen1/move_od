@@ -272,7 +272,7 @@ class Lodes_comb:
                 weekdays.append(day)
             else:
                 weekends.append(day)
-                pd.DataFrame().to_csv(f"{self.data_path}/lodes_combs/lodes_{day.date()}.csv", index=False)
+                pd.DataFrame().to_csv(f"{self.data_path}/lodes_combs/lodes_{day}.csv", index=False)
 
         day_count = len(weekdays)
 
