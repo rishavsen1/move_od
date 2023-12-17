@@ -3,7 +3,6 @@
 
 import geopandas as gpd
 import pandas as pd
-from utils import marginal_dist
 
 # county_lodes_paths = ['../data/lodes/tn_od_main_JT00_2019.csv', '../data/lodes/tn_od_main_JT01_2019.csv',
 #                     '../data/lodes/tn_od_main_JT02_2019.csv', '../data/lodes/tn_od_main_JT03_2019.csv',
@@ -22,7 +21,7 @@ class Lodes_gen:
         self.od_option = od_option
         self.logger.info("\n Running lodes_read.py")
 
-    def generate(self, sample_size):
+    def generate(self):
         # loading parts of the available data
         # these files are not included here, can be downloaded from: https://lehd.ces.census.gov/data/lodes/LODES7/tn/od/
 
@@ -101,7 +100,6 @@ class Lodes_gen:
         area_lodes = area_lodes.drop(["GEOID_x", "GEOID_y", "geometry_x", "geometry_y"], axis=1)
         # self.logger.info(area_lodes.head())
         # it is stored at the block level (smaller area than CBG)
-        area_lodes = marginal_dist(area_lodes, "h_geocode", "w_geocode", sample_size)
         area_lodes.to_csv(f"{self.output_path}/county_lodes.csv", index=False)
 
         # additional

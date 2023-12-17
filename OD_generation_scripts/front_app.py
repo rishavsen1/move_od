@@ -10,7 +10,7 @@ import locations_OSM_SG
 import read_ms_buildings
 import lodes_combs
 import safegraph_combs as sg_combs
-from utils import read_data
+from utils import read_data, get_datetime_ranges
 import union_lodes_sg
 
 from logger import Logger
@@ -59,19 +59,19 @@ days_count = (end_date - start_date).days
 timedelta = st.number_input("Select a value of Timedelta (in seconds)", value=15)
 
 times = st.number_input("Choose number of slots to generate for:", value=2, min_value=0, max_value=10)
-time_start = []
-time_end = []
+start_times = []
+end_times = []
 
 for time in range(int(times)):
     col1, col2 = st.columns(2)
 
     with col1:
-        time_start.append(st.time_input(f"Enter start time for slot {time+1}", datetime.time(6, 00)))
+        start_times.append(st.time_input(f"Enter start time for slot {time+1}", datetime.time(6, 00)))
 
     with col2:
-        time_end.append(st.time_input(f"Enter end time for slot {time+1}", datetime.time(11, 00)))
+        end_times.append(st.time_input(f"Enter end time for slot {time+1}", datetime.time(11, 00)))
 
-for s, e in zip(time_start, time_end):
+for s, e in zip(start_times, end_times):
     if s >= e:
         st.error("Start time should be greater than end time")
         break
@@ -90,7 +90,7 @@ data_path = st.text_input(
 
 county_cbg = st.text_input(
     "Enter Block group shapefile path",
-    value=f"{data_path}/tl_2022_06_bg/tl_2022_06_bg.shp",
+    value=f"{data_path}/tl_2022_06_bg.zip",
 )
 
 choice = st.multiselect("Choose type of data to generate for:", ["LODES", "Safegraph"], default=["LODES"])
@@ -107,7 +107,7 @@ if "LODES" in choice:
         county_lodes_paths.append(
             st.text_input(
                 f"Enter LODES path {lodes+1}",
-                value=f"{data_path}/lodes/ca_od_main_JT0{lodes}_2021.csv",
+                value=f"{data_path}/ca_od_main_JT0{lodes}_2021.csv",
             )
         )
 
@@ -172,6 +172,9 @@ if cpus > days_count:
 
 
 if begin:
+
+    datetime_ranges = get_datetime_ranges(start_date, end_date, start_times, end_times, timedelta)
+
     logger = Logger(f"{output_path}/{county}_{state}_{start_date}_{end_date}.log")
     if not os.path.exists(output_path):
         os.makedirs(output_path, exist_ok=True)
@@ -188,7 +191,7 @@ if begin:
             st.success("LODES filtered data already present")
         else:
             lodes_read = lodes_read.Lodes_gen(fips, county_lodes_paths, county_cbg, output_path, logger, od_option)
-            lodes_read.generate(sample_size)
+            lodes_read.generate()
             st.success("LODES data filtered")
 
         if sg_enabled:
@@ -251,10 +254,7 @@ if begin:
                 output_path,
                 ms_enabled,
                 timedelta,
-                time_start,
-                time_end,
-                start_date,
-                end_date,
+                datetime_ranges,
                 logger,
             )
             lodes_combs.main(
@@ -264,6 +264,7 @@ if begin:
                 ms_build,
                 county_lodes,
                 lodes_cpu_max,
+                sample_size
             )
             st.success("Custom OD generated (LODES)")
         if "Safegraph" in choice:
@@ -272,8 +273,8 @@ if begin:
                 output_path,
                 ms_enabled,
                 timedelta,
-                time_start,
-                time_end,
+                start_times,
+                end_times,
                 start_date,
                 end_date,
                 logger,

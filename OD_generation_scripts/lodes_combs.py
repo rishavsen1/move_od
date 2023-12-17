@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import os
 import multiprocessing
 
+from utils import marginal_dist
 
 class Lodes_comb:
     def __init__(
@@ -18,33 +19,27 @@ class Lodes_comb:
         data_path,
         ms_enabled,
         timedelta,
-        time_start,
-        time_end,
-        start_date,
-        end_date,
+        datetime_ranges,
         logger,
     ) -> None:
         self.county_cbg = county_cbg
         self.data_path = data_path
         self.ms_enabled = ms_enabled
         self.timedelta = timedelta
-        self.time_start = time_start
-        self.time_end = time_end
-        self.start_date = start_date
-        self.end_date = end_date
+        self.datetime_ranges = datetime_ranges
         self.logger = logger
         self.logger.info("Initalizing lodes_comb.py")
 
-    def intpt_func(row):
+    def intpt_func(self, row):
         return Point(row["INTPTLON"], row["INTPTLAT"])
 
-    def func_origin_pt(row):
+    def func_origin_pt(self, row):
         return Point(row.origin_loc_lon, row.origin_loc_lat)
 
-    def func_dest_pt(row):
+    def func_dest_pt(self, row):
         return Point(row.dest_loc_lon, row.dest_loc_lat)
 
-    def datetime_range(start, end, delta):
+    def datetime_range(self, start, end, delta):
         current = start
         while current < end:
             yield current
@@ -60,6 +55,23 @@ class Lodes_comb:
         # )
         county_lodes.w_geocode = county_lodes.w_geocode.astype(str)
         county_lodes.h_geocode = county_lodes.h_geocode.astype(str)
+
+        # aggregating total jobs for each combination of home and work cbg
+        county_lodes = (
+            county_lodes.groupby(["h_geocode", "w_geocode"])
+            .agg(total_jobs=("total_jobs", sum))
+            .reset_index()
+            .merge(county_cbg[["GEOID", "geometry"]], left_on="h_geocode", right_on="GEOID")
+            .rename({"geometry": "origin_geom"}, axis=1)
+            .drop("GEOID", axis=1)
+            .merge(county_cbg[["GEOID", "geometry"]], left_on="w_geocode", right_on="GEOID")
+            .rename({"geometry": "dest_geom"}, axis=1)
+            .drop("GEOID", axis=1)
+            .sort_values("total_jobs", ascending=False)
+            .reset_index(drop=True)
+        )
+        county_lodes = gpd.GeoDataFrame(county_lodes)
+
 
         # # loading Hamilton county geodata
         # county_cbg = pd.read_csv(f"{self.data_path}/county_cbg.csv")
@@ -103,63 +115,50 @@ class Lodes_comb:
         # ms_build.GEOID = ms_build.GEOID.astype(str)
         # ms_build["location"] = ms_build.geometry.apply(lambda p: [p.y, p.x])
 
-        # aggregating total jobs for each combination of home and work cbg
-        county_lodes = (
-            county_lodes.groupby(["h_geocode", "w_geocode"])
-            .agg(total_jobs=("total_jobs", sum))
-            .reset_index()
-            .merge(county_cbg[["GEOID", "geometry"]], left_on="h_geocode", right_on="GEOID")
-            .rename({"geometry": "origin_geom"}, axis=1)
-            .drop("GEOID", axis=1)
-            .merge(county_cbg[["GEOID", "geometry"]], left_on="w_geocode", right_on="GEOID")
-            .rename({"geometry": "dest_geom"}, axis=1)
-            .drop("GEOID", axis=1)
-            .sort_values("total_jobs", ascending=False)
-            .reset_index(drop=True)
-        )
-        county_lodes = gpd.GeoDataFrame(county_lodes)
-
         # generating array of start and return times (in 15 min intervals)
-        times = []
-        for time in range(len(self.time_start)):
-            times.append(
-                [
-                    datetime.strptime(dt.strftime("%H:%M"), "%H:%M")
-                    for dt in Lodes_comb.datetime_range(
-                        datetime(
-                            2023,
-                            9,
-                            1,
-                            self.time_start[time].hour,
-                            self.time_start[time].minute,
-                            self.time_start[time].second,
-                        ),
-                        datetime(
-                            2023,
-                            9,
-                            1,
-                            self.time_end[time].hour,
-                            self.time_end[time].minute,
-                            self.time_end[time].second,
-                        ),
-                        timedelta(seconds=self.timedelta),
-                    )
-                ]
-            )
+        # times = []
+
+        # for start_time, end_time in zip(self.start_datetime, self.end_datetime):
+        #     times.append([
+        #         datetime.strptime(dt.strftime("%H:%M"), "%H:%M")
+        #         for dt in self.datetime_range(
+        #             start_time, end_time, timedelta(seconds=self.timedelta)
+        #         )
+        #     ])
+
+        # for time in range(len(self.time_start)):
+        #     times.append(
+        #         [
+        #             datetime.strptime(dt.strftime("%H:%M"), "%H:%M")
+        #             for dt in self.datetime_range(
+        #                 datetime.combine(self.time),
+        #                 datetime.combine(
+        #                     2023,
+        #                     9,
+        #                     1,
+        #                     self.time_end[time].hour,
+        #                     self.time_end[time].minute,
+        #                     self.time_end[time].second,
+        #                 ),
+        #                 timedelta(seconds=self.timedelta),
+        #             )
+        #         ]
+        #     )
 
         # times_evening = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in
         #     datetime_range(datetime(2016, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2016, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
         #     timedelta(seconds=self.timedelta))]
 
         # return county_lodes, county_cbg, res_build, com_build, ms_build, times
-        return county_lodes, county_cbg, res_build, com_build, ms_build, times
+        return county_lodes, county_cbg, res_build, com_build, ms_build
 
-    def generate_OD(self, day, county_lodes, county_cbg, res_build, com_build, ms_build, times):
+    def generate_OD(self, day, county_lodes, county_cbg, res_build, com_build, ms_build, datetime_ranges, sample_size):
         # for day in day_count:
-        self.logger.info(f"Generating results for day {day.date()}")
+        self.logger.info(f"Generating results for day {day}")
         prob_matrix = pd.DataFrame()
 
         # self.logger.info(county_lodes.head())
+        county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
         for idx, movement in county_lodes.iterrows():
             res = res_build[res_build.GEOID == movement.h_geocode].reset_index(drop=True)
             if res.empty:
@@ -201,9 +200,9 @@ class Lodes_comb:
 
                 time_slot = []
 
-                for time in range(len(times)):
+                for time in range(len(datetime_ranges)):
                     # self.logger.info(times[time])
-                    time_slot.append(np.random.choice(times[time], size=1, replace=True))
+                    time_slot.append(np.random.choice(datetime_ranges[time], size=1, replace=True))
 
                 # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
                 # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
@@ -218,25 +217,27 @@ class Lodes_comb:
                 temp.loc[job, "dest_loc_lat"] = c_df.location[0]
                 temp.loc[job, "dest_loc_lon"] = c_df.location[1]
 
-                for time in range(len(times)):
-                    temp.loc[job, f"time_{time}"] = time_slot[time][0].time()
-                    temp.loc[job, f"time_{time}_secs"] = (time_slot[time][0] - datetime(1900, 1, 1)).total_seconds()
-                    temp.loc[job, f"time_{time}_str"] = time_slot[time][0].strftime("%H:%M")
+                for time in range(len(datetime_ranges)):
+                    temp.loc[job, f"pickup_time_{time}"] = time_slot[time][0].time()
+                    time_part = time_slot[time][0].time()
+                    seconds_since_midnight = (time_part.hour * 3600) + (time_part.minute * 60) + time_part.second
+                    temp.loc[job, f"pickup_time_{time}_secs"] = seconds_since_midnight
+                    temp.loc[job, f"pickup_time_{time}_str"] = time_slot[time][0].strftime("%H:%M:%S")
 
                 prob_matrix = pd.concat([prob_matrix, temp], ignore_index=True)
 
         # convert the lat and lon points to shapely Points
         prob_matrix["origin_geom"] = prob_matrix[["origin_loc_lat", "origin_loc_lon"]].apply(
-            lambda row: Lodes_comb.func_origin_pt(row), axis=1
+            lambda row: self.func_origin_pt(row), axis=1
         )
         prob_matrix["dest_geom"] = prob_matrix[["dest_loc_lat", "dest_loc_lon"]].apply(
-            lambda row: Lodes_comb.func_dest_pt(row), axis=1
+            lambda row: self.func_dest_pt(row), axis=1
         )
         prob_matrix.h_geocode = prob_matrix.h_geocode.astype(str)
         prob_matrix.w_geocode = prob_matrix.w_geocode.astype(str)
 
-        prob_matrix.to_csv(f"{self.data_path}/lodes_combs/lodes_{day.date()}.csv", index=False)
-        self.logger.info(f"LODES - Day {day.date()} generated")
+        prob_matrix.to_csv(f"{self.data_path}/lodes_combs/lodes_{day}.csv", index=False)
+        self.logger.info(f"LODES - Day {day} generated")
 
     def main(
         self,
@@ -246,21 +247,17 @@ class Lodes_comb:
         ms_build,
         county_lodes,
         lodes_cpu_max,
+        sample_size
     ):
         (
-            county_lodes,
-            county_cbg,
-            res_build,
-            com_build,
-            ms_build,
-            times,
+            county_lodes, county_cbg, res_build, com_build, ms_build
         ) = Lodes_comb.read_data(self, county_lodes, county_cbg, res_build, com_build, ms_build)
 
         # setting the random seed
         np.random.seed(42)
         random.seed(42)
 
-        days = pd.date_range(self.start_date, self.end_date, freq="d").to_list()
+        days = list(set([day[0].date() for day in self.datetime_ranges]))
 
         # Lodes_comb.generate_OD(county_lodes, county_cbg, res_build, com_build, ms_build, times)
         weekdays = []
@@ -270,8 +267,8 @@ class Lodes_comb:
 
         # self.logger.info(days)
         for day in days:
-            if day.date().weekday() <= 4:
-                self.logger.info(day.date().weekday())
+            if day.weekday() <= 7:
+                self.logger.info(day.weekday())
                 weekdays.append(day)
             else:
                 weekends.append(day)
@@ -305,7 +302,8 @@ class Lodes_comb:
                         res_build,
                         com_build,
                         ms_build,
-                        times,
+                        self.datetime_ranges,
+                        sample_size
                     ),
                 )
                 process.start()

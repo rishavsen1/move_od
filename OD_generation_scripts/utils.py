@@ -2,7 +2,8 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Point
-
+import random
+import datetime
 
 def intpt_func(row):
     return Point(row["INTPTLON"], row["INTPTLAT"])
@@ -35,7 +36,7 @@ def sample_rows(grouped_df, probabilities, remaining_jobs, origin_col, dest_col)
     sampled_rows = pd.DataFrame(columns=[origin_col, dest_col, "total_jobs"])
     while sampled_rows["total_jobs"].sum() < remaining_jobs and len(probabilities) > 0:
         # Sample one row at a time to avoid overshooting
-        chosen_row = probabilities.sample(n=1, weights=probabilities)
+        chosen_row = probabilities.sample(n=1, weights=probabilities, random_state=random.randint(0, 100))
         chosen_row_df = grouped_df.loc[chosen_row.index]
         if sampled_rows["total_jobs"].sum() + chosen_row_df["total_jobs"].values[0] <= remaining_jobs:
             sampled_rows = pd.concat([sampled_rows, chosen_row_df.reset_index()])
@@ -45,13 +46,16 @@ def sample_rows(grouped_df, probabilities, remaining_jobs, origin_col, dest_col)
 
 
 def marginal_dist(df, origin_col, dest_col, sample_size):
-    grouped_df = df.groupby([origin_col, dest_col]).sum()
+    grouped_df = df.groupby([origin_col, dest_col]).first()
 
     # Calculate probabilities
     total_jobs = grouped_df["total_jobs"].sum()
     probabilities = grouped_df["total_jobs"] / total_jobs
+        
 
     subsampled_df = pd.DataFrame()
+    if sample_size > total_jobs:
+        remaining_jobs = total_jobs 
     remaining_jobs = sample_size
 
     while remaining_jobs > 0 and not probabilities.empty:
@@ -62,6 +66,28 @@ def marginal_dist(df, origin_col, dest_col, sample_size):
 
     return subsampled_df
 
+def combine_date_time(date, time):
+        return datetime.datetime.combine(date, time)
+
+def get_datetime_ranges(start_date, end_date, start_times, end_times, timedelta):
+    # Creating the list of lists of datetime objects
+    datetime_ranges = []
+    current_date = start_date
+    while current_date <= end_date:
+        for start_time, end_time in zip(start_times, end_times):
+            start_datetime = combine_date_time(current_date, start_time)
+            end_datetime = combine_date_time(current_date, end_time)
+
+            # Adjust if end_datetime is before start_datetime (crossing midnight)
+            if end_datetime < start_datetime:
+                end_datetime += datetime.timedelta(days=1)
+
+            datetime_range = [start_datetime + datetime.timedelta(seconds=x * timedelta)
+                            for x in range(0, int((end_datetime - start_datetime).total_seconds() / timedelta))]
+            datetime_ranges.append(datetime_range)
+        current_date = current_date + datetime.timedelta(days=1)
+    
+    return datetime_ranges
 
 def read_data(data_path, lodes=False, sg_enabled=False, ms_enabled=False, sample_size=np.inf):
     print("Reading data")
