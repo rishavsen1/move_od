@@ -15,6 +15,64 @@ import union_lodes_sg
 
 from logger import Logger
 
+
+def state_abbreviation_to_full(name):
+    states = {
+        "AL": "Alabama",
+        "AK": "Alaska",
+        "AZ": "Arizona",
+        "AR": "Arkansas",
+        "CA": "California",
+        "CO": "Colorado",
+        "CT": "Connecticut",
+        "DE": "Delaware",
+        "FL": "Florida",
+        "GA": "Georgia",
+        "HI": "Hawaii",
+        "ID": "Idaho",
+        "IL": "Illinois",
+        "IN": "Indiana",
+        "IA": "Iowa",
+        "KS": "Kansas",
+        "KY": "Kentucky",
+        "LA": "Louisiana",
+        "ME": "Maine",
+        "MD": "Maryland",
+        "MA": "Massachusetts",
+        "MI": "Michigan",
+        "MN": "Minnesota",
+        "MS": "Mississippi",
+        "MO": "Missouri",
+        "MT": "Montana",
+        "NE": "Nebraska",
+        "NV": "Nevada",
+        "NH": "New Hampshire",
+        "NJ": "New Jersey",
+        "NM": "New Mexico",
+        "NY": "New York",
+        "NC": "North Carolina",
+        "ND": "North Dakota",
+        "OH": "Ohio",
+        "OK": "Oklahoma",
+        "OR": "Oregon",
+        "PA": "Pennsylvania",
+        "RI": "Rhode Island",
+        "SC": "South Carolina",
+        "SD": "South Dakota",
+        "TN": "Tennessee",
+        "TX": "Texas",
+        "UT": "Utah",
+        "VT": "Vermont",
+        "VA": "Virginia",
+        "WA": "Washington",
+        "WV": "West Virginia",
+        "WI": "Wisconsin",
+        "WY": "Wyoming",
+    }
+
+    return states.get(name.upper(), "Invalid state abbreviation")
+
+
 print("Streamlit started")
 
 os.makedirs("log_files", exist_ok=True)
@@ -29,14 +87,14 @@ st.write(
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    fips = st.text_input("Enter County's FIPS code", value="013")
+    fips = st.text_input("Enter County's FIPS code", value="065")
 
 with col2:
-    county = st.text_input("Enter County's name", value="Contra Costa")
+    county = st.text_input("Enter County's name", value="Hamilton")
 with col3:
     city = st.text_input("Enter City's name", value="")
 with col4:
-    state = st.text_input("Enter State", value="CA")
+    state = st.text_input("Enter State", value="TN")
 
 st.write(
     "You can download necessary Shapefiles here: [Federal Information Processing System (FIPS) Codes for States and Counties](https://www.census.gov/cgi-bin/geo/shapefiles/index.php)"
@@ -90,7 +148,7 @@ data_path = st.text_input(
 
 county_cbg = st.text_input(
     "Enter Block group shapefile path",
-    value=f"{data_path}/tl_2022_06_bg.zip",
+    value=f"{data_path}/tl_2022_47_bg.zip",
 )
 
 choice = st.multiselect("Choose type of data to generate for:", ["LODES", "Safegraph"], default=["LODES"])
@@ -98,7 +156,7 @@ choice = st.multiselect("Choose type of data to generate for:", ["LODES", "Safeg
 lodes_enabled = False
 county_lodes_paths = []
 
-sample_size = st.number_input("Enter number of samples to generate", value=100, min_value=0, max_value=int(1e15))
+sample_size = st.number_input("Enter number of samples to generate", value=100000, min_value=0, max_value=int(1e15))
 
 if "LODES" in choice:
     lodes_enabled = True
@@ -107,7 +165,7 @@ if "LODES" in choice:
         county_lodes_paths.append(
             st.text_input(
                 f"Enter LODES path {lodes+1}",
-                value=f"{data_path}/ca_od_main_JT0{lodes}_2021.csv",
+                value=f"{data_path}/{state.lower()}_od_main_JT0{lodes}_2021.csv",
             )
         )
 
@@ -140,7 +198,9 @@ if ms_enabled:
     st.write(
         "Microsoft Buildings footprint can be downloaded from [Global ML Buildings Footprint by Bing Maps](https://github.com/microsoft/GlobalMLBuildingFootprints)"
     )
-    builds = st.text_input("Enter MS buildings file path", value=f"{data_path}/California.geojson")
+    builds = st.text_input(
+        "Enter MS buildings file path", value=f"{data_path}/{state_abbreviation_to_full(state)}.geojson"
+    )
 
 output_path = st.text_input(
     "Enter output file path",
@@ -173,117 +233,123 @@ if cpus > days_count:
 
 
 if begin:
+    invalid_path = False
 
-    datetime_ranges = get_datetime_ranges(start_date, end_date, start_times, end_times, timedelta)
+    if ms_enabled:
+        paths = [data_path, county_cbg, builds] + county_lodes_paths + safe_df
+    else:
+        paths = [data_path, county_cbg] + county_lodes_paths + safe_df
 
-    logger = Logger(f"{output_path}/{county}_{state}_{start_date}_{end_date}.log")
-    if not os.path.exists(output_path):
-        os.makedirs(output_path, exist_ok=True)
+    for path in paths:
+        if not os.path.exists(path):
+            st.error(f"{path} is invalid", icon="🚨")
+            invalid_path = True
 
-    if "LODES" in choice:
-        if not os.path.exists(output_path + "/lodes_combs"):
-            os.mkdir(output_path + "/lodes_combs")
-    if "Safegraph" in choice:
-        if not os.path.exists(output_path + "/safegraph_combs"):
-            os.mkdir(output_path + "/safegraph_combs")
+    if not invalid_path:
+        datetime_ranges = get_datetime_ranges(start_date, end_date, start_times, end_times, timedelta)
 
-    with st.spinner("In Progress..."):
-        if os.path.exists(f"{output_path}/county_lodes_2019.csv") and os.path.exists(f"{output_path}/county_cbg.csv"):
-            st.success("LODES filtered data already present")
-        else:
-            lodes_read = lodes_read.Lodes_gen(fips, county_lodes_paths, county_cbg, output_path, logger, od_option)
-            lodes_read.generate()
-            st.success("LODES data filtered")
+        logger = Logger(f"{output_path}/{county}_{state}_{start_date}_{end_date}.log")
+        if not os.path.exists(output_path):
+            os.makedirs(output_path, exist_ok=True)
 
-        if sg_enabled:
-            if os.path.exists(f"{output_path}/sg_poi_cbgs.csv") and os.path.exists(
-                f"{output_path}/sg_visits_by_day.csv"
+        if "LODES" in choice:
+            if not os.path.exists(output_path + "/lodes_combs"):
+                os.mkdir(output_path + "/lodes_combs")
+        if "Safegraph" in choice:
+            if not os.path.exists(output_path + "/safegraph_combs"):
+                os.mkdir(output_path + "/safegraph_combs")
+
+        with st.spinner("In Progress..."):
+            if os.path.exists(f"{output_path}/county_lodes_2019.csv") and os.path.exists(
+                f"{output_path}/county_cbg.csv"
             ):
-                st.success("Safegraph filtered data already present")
+                st.success("LODES filtered data already present")
             else:
-                safegraph = safegraph.Safegraph(
-                    fips,
-                    city,
+                lodes_read = lodes_read.Lodes_gen(fips, county_lodes_paths, county_cbg, output_path, logger, od_option)
+                lodes_read.generate()
+                st.success("LODES data filtered")
+
+            if sg_enabled:
+                if os.path.exists(f"{output_path}/sg_poi_cbgs.csv") and os.path.exists(
+                    f"{output_path}/sg_visits_by_day.csv"
+                ):
+                    st.success("Safegraph filtered data already present")
+                else:
+                    safegraph = safegraph.Safegraph(
+                        fips,
+                        city,
+                        county_cbg,
+                        safe_df,
+                        output_path,
+                        start_date,
+                        end_date,
+                        logger,
+                    )
+                    safegraph.get_sg_poi()
+                    safegraph.get_day_of_week()
+                    st.success("Safegraph data filtered")
+
+            if ms_enabled:
+                if os.path.exists(f"{output_path}/county_buildings_MS.csv"):
+                    st.success("MS Buildings filtered already present")
+                else:
+                    ms_builds = read_ms_buildings.MS_Buildings(fips, county_cbg, builds, output_path, logger)
+                    ms_builds.buildings()
+                    st.success("MS Buildings data filtered")
+
+            if os.path.exists(f"{output_path}/county_residential_buildings.csv") and os.path.exists(
+                f"{output_path}/county_work_locations.csv"
+            ):
+                st.success("Locations already present")
+
+            else:
+                locations = locations_OSM_SG.Locations_OSM_SG(
+                    fips, county, county_cbg, sg_enabled, output_path, logger, od_option
+                )
+                locations.find_locations_OSM()
+                st.success("Locations generated")
+
+            county_cbg, res_build, com_build, ms_build, county_lodes, sg = read_data(
+                data_path=output_path,
+                lodes=lodes_enabled,
+                sg_enabled=sg_enabled,
+                ms_enabled=ms_enabled,
+                sample_size=sample_size,
+            )
+
+            # for proc in range(len(choice)):
+            # TODO: wont work like this, need to add two processes separately
+            # process = multiprocessing.Process(target=lodes_combs.main, args=(county_cbg,\
+            #                             res_build, com_build, ms_build, county_lodes, lodes_cpu_max))
+            # process = multiprocessing.Process(target=sg_combs.main, args=(county_cbg,\
+            #                             res_build, com_build, ms_build, sg, sg_cpu_max))
+            if "LODES" in choice:
+                lodes_combs = lodes_combs.Lodes_comb(
                     county_cbg,
-                    safe_df,
                     output_path,
+                    ms_enabled,
+                    timedelta,
+                    datetime_ranges,
+                    logger,
+                )
+                lodes_combs.main(county_cbg, res_build, com_build, ms_build, county_lodes, lodes_cpu_max, sample_size)
+                st.success("Custom OD generated (LODES)")
+            if "Safegraph" in choice:
+                sg_combs = sg_combs.Sg_combs(
+                    county_cbg,
+                    output_path,
+                    ms_enabled,
+                    timedelta,
+                    start_times,
+                    end_times,
                     start_date,
                     end_date,
                     logger,
                 )
-                safegraph.get_sg_poi()
-                safegraph.get_day_of_week()
-                st.success("Safegraph data filtered")
+                sg_combs.main(county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max)
+                st.success("Custom OD generated (Safegraph)")
 
-        if ms_enabled:
-            if os.path.exists(f"{output_path}/county_buildings_MS.csv"):
-                st.success("MS Buildings filtered already present")
-            else:
-                ms_builds = read_ms_buildings.MS_Buildings(fips, county_cbg, builds, output_path, logger)
-                ms_builds.buildings()
-                st.success("MS Buildings data filtered")
-
-        if os.path.exists(f"{output_path}/county_residential_buildings.csv") and os.path.exists(
-            f"{output_path}/county_work_locations.csv"
-        ):
-            st.success("Locations already present")
-
-        else:
-            locations = locations_OSM_SG.Locations_OSM_SG(
-                fips, county, county_cbg, sg_enabled, output_path, logger, od_option
-            )
-            locations.find_locations_OSM()
-            st.success("Locations generated")
-
-        county_cbg, res_build, com_build, ms_build, county_lodes, sg = read_data(
-            data_path=output_path,
-            lodes=lodes_enabled,
-            sg_enabled=sg_enabled,
-            ms_enabled=ms_enabled,
-            sample_size=sample_size,
-        )
-
-        # for proc in range(len(choice)):
-        # TODO: wont work like this, need to add two processes separately
-        # process = multiprocessing.Process(target=lodes_combs.main, args=(county_cbg,\
-        #                             res_build, com_build, ms_build, county_lodes, lodes_cpu_max))
-        # process = multiprocessing.Process(target=sg_combs.main, args=(county_cbg,\
-        #                             res_build, com_build, ms_build, sg, sg_cpu_max))
-        if "LODES" in choice:
-            lodes_combs = lodes_combs.Lodes_comb(
-                county_cbg,
-                output_path,
-                ms_enabled,
-                timedelta,
-                datetime_ranges,
-                logger,
-            )
-            lodes_combs.main(
-                county_cbg,
-                res_build,
-                com_build,
-                ms_build,
-                county_lodes,
-                lodes_cpu_max,
-                sample_size
-            )
-            st.success("Custom OD generated (LODES)")
-        if "Safegraph" in choice:
-            sg_combs = sg_combs.Sg_combs(
-                county_cbg,
-                output_path,
-                ms_enabled,
-                timedelta,
-                start_times,
-                end_times,
-                start_date,
-                end_date,
-                logger,
-            )
-            sg_combs.main(county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max)
-            st.success("Custom OD generated (Safegraph)")
-
-        if "Safegraph" in choice and "LODES" in choice:
-            days = pd.date_range(start_date, end_date, freq="d").to_list()
-            for day in days:
-                union_lodes_sg.union(output_path, day, sg_enabled)
+            if "Safegraph" in choice and "LODES" in choice:
+                days = pd.date_range(start_date, end_date, freq="d").to_list()
+                for day in days:
+                    union_lodes_sg.union(output_path, day, sg_enabled)

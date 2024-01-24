@@ -25,15 +25,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def process_section(miny, maxy, minx, maxx, tags):
-    while True:
+    retries = 0
+    while retries < 5:
         try:
-            geoms = ox.geometries_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
+            geoms = ox.features_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
             # print(geoms.columns)
             geoms = geoms[["geometry", "building"]]
             print(f"Got geometries for {miny, maxy, minx, maxx, tags}")
             return geoms
         except Exception as e:
             print("Exception:", e)
+
+        retries += 1
 
 
 class Locations_OSM_SG:
@@ -135,6 +138,7 @@ class Locations_OSM_SG:
         points = gpd.points_from_xy(res_build["INTPTLON"], res_build["INTPTLAT"])
         res_build["intpt"] = points.astype(str)
         res_build["location"] = list(zip(res_build.geometry.y, res_build.geometry.x))
+        res_build = res_build.drop({"index_right"}, axis=1)
 
         # saving residential buildings
         # TODO: Error Handling
