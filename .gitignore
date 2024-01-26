@@ -76,3 +76,5 @@ using_the_lodes_od_data.ipynb
 using_the_sg_od_data.ipynb
 .venv
 /plots
+origin_dest
+accessibility_estimation/outputs/
