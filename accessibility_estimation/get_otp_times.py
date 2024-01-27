@@ -7,7 +7,7 @@ import os
 
 async def traveltimeTransit(latHome, lonHome, latWork, lonWork, time, semaphore):
     async with semaphore:
-        request_url = f"http://localhost:8080/otp/routers/default/plan?fromPlace={latHome},{lonHome}&toPlace={latWork},{lonWork}&mode=WALK,TRANSIT&date=10-09-2023&time={time}&maxWalkDistance=1000"
+        request_url = f"http://localhost:8080/otp/routers/default/plan?fromPlace={latHome},{lonHome}&toPlace={latWork},{lonWork}&mode=WALK,TRANSIT&date=01-26-2024&time={time}&maxWalkDistance=8000"
 
         async with aiohttp.ClientSession() as session:
             try:
@@ -66,7 +66,7 @@ async def traveltimeTransit(latHome, lonHome, latWork, lonWork, time, semaphore)
 
 async def traveltimeDrive(latHome, lonHome, latWork, lonWork, time, semaphore):
     async with semaphore:
-        request_url = f"http://localhost:8080/otp/routers/default/plan?fromPlace={latHome},{lonHome}&toPlace={latWork},{lonWork}&mode=CAR&date=10-09-2023&time={time}&maxWalkDistance=1000"
+        request_url = f"http://localhost:8080/otp/routers/default/plan?fromPlace={latHome},{lonHome}&toPlace={latWork},{lonWork}&mode=CAR&date=01-26-2024&time={time}&maxWalkDistance=1000"
 
         async with aiohttp.ClientSession() as session:
             try:
@@ -92,7 +92,7 @@ async def traveltimeDrive(latHome, lonHome, latWork, lonWork, time, semaphore):
 
 async def traveltimeWalk(latHome, lonHome, latWork, lonWork, time, semaphore):
     async with semaphore:
-        request_url = f"http://localhost:8080/otp/routers/default/plan?fromPlace={latHome},{lonHome}&toPlace={latWork},{lonWork}&mode=WALK&date=10-09-2023&time={time}&maxWalkDistance=1000000"
+        request_url = f"http://localhost:8080/otp/routers/default/plan?fromPlace={latHome},{lonHome}&toPlace={latWork},{lonWork}&mode=WALK&date=01-26-2024&time={time}&maxWalkDistance=1000000"
 
         res_dict = {}
         res_dict.update(
