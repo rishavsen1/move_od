@@ -12,7 +12,8 @@ import multiprocessing
 
 from utils import marginal_dist
 
-class Lodes_comb:
+
+class LodesComb:
     def __init__(
         self,
         county_cbg,
@@ -71,7 +72,6 @@ class Lodes_comb:
             .reset_index(drop=True)
         )
         county_lodes = gpd.GeoDataFrame(county_lodes)
-
 
         # # loading Hamilton county geodata
         # county_cbg = pd.read_csv(f"{self.data_path}/county_cbg.csv")
@@ -239,19 +239,10 @@ class Lodes_comb:
         prob_matrix.to_csv(f"{self.data_path}/lodes_combs/lodes_{day}.csv", index=False)
         self.logger.info(f"LODES - Day {day} generated")
 
-    def main(
-        self,
-        county_cbg,
-        res_build,
-        com_build,
-        ms_build,
-        county_lodes,
-        lodes_cpu_max,
-        sample_size
-    ):
-        (
-            county_lodes, county_cbg, res_build, com_build, ms_build
-        ) = Lodes_comb.read_data(self, county_lodes, county_cbg, res_build, com_build, ms_build)
+    def main(self, county_cbg, res_build, com_build, ms_build, county_lodes, lodes_cpu_max, sample_size):
+        (county_lodes, county_cbg, res_build, com_build, ms_build) = Lodes_comb.read_data(
+            self, county_lodes, county_cbg, res_build, com_build, ms_build
+        )
 
         # setting the random seed
         np.random.seed(42)
@@ -303,7 +294,7 @@ class Lodes_comb:
                         com_build,
                         ms_build,
                         self.datetime_ranges,
-                        sample_size
+                        sample_size,
                     ),
                 )
                 process.start()

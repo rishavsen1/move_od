@@ -3,6 +3,11 @@ import asyncio
 from tqdm.asyncio import tqdm
 import pandas as pd
 import os
+import sys
+
+# if len(sys.argv) < 2:
+#     print("Usage: python script.py CITY_NAME")
+#     sys.exit(1)
 
 
 async def traveltimeTransit(latHome, lonHome, latWork, lonWork, time, semaphore):
@@ -282,8 +287,12 @@ async def get_walk_time(trips_df):
 
 os.makedirs("./outputs", exist_ok=True)
 
-CITY = "Memphis"
+# county_name = sys.argv[1]
+
+CITY = "Chattanooga"
 OD_NAME = f"/home/rishav/Programs/move_od/origin_dest/{CITY}_origin_dest.csv"
+
+# OD_NAME = f"/home/rishav/Programs/move_od/generated_OD/{county_name}_TN_2021-01-04_2021-01-04"
 trips = pd.read_csv(f"{OD_NAME}")
 
 trips = asyncio.run(get_walk_time(trips))

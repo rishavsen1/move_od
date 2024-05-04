@@ -39,7 +39,7 @@ def process_section(miny, maxy, minx, maxx, tags):
         retries += 1
 
 
-class Locations_OSM_SG:
+class LocationsOSMSG:
     def __init__(self, county, area, county_cbg, sg_enabled, output_path, logger, od_option):
         self.COUNTY = county
         self.AREA = area

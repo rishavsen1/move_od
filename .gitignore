@@ -78,3 +78,6 @@ using_the_sg_od_data.ipynb
 /plots
 origin_dest
 accessibility_estimation/outputs/
+/move_OD
+*csv
+accessibility_estimation/outputs2/income_tn.geojson

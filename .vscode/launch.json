@@ -8,7 +8,7 @@
       "module": "streamlit",
       "args": [
         "run",
-        "/home/rishav/Programs/move_od/OD_generation_scripts/front_app.py",
+        "/home/rishav/Programs/move_od/OD_generation_scripts/app.py",
         "--server.port",
         "8509"
       ],
