@@ -97,5 +97,5 @@ class LodesGen:
 
         cbg = cbg[["GEOID", "COUNTYFP", "geometry"]]
 
-        cbg.to_csv(f"{self.output_path}/county_cbg", index=False)
+        cbg.to_csv(f"{self.output_path}/county_cbg.csv", index=False)
         self.logger.info(f"County has {cbg.shape[0]} census block groups")
