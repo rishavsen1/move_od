@@ -10,7 +10,7 @@
         "run",
         "/home/rishav/Programs/move_od/OD_generation_scripts/app.py",
         "--server.port",
-        "8511"
+        "8512"
       ],
       "cwd": "/home/rishav/Programs/move_od/OD_generation_scripts",
       "env": {

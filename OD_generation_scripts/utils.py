@@ -210,7 +210,7 @@ def read_data(output_path, lodes=False, sg_enabled=False, ms_enabled=False, samp
 
 
 def get_states_and_counties():
-    df = pd.read_csv("../data/uscounties.csv")
+    df = pd.read_csv("../data/uscounties.csv", dtype={"county_fips": "str"})
     states = df.groupby("state_name").first()["state_id"].to_dict()
     state_to_county = df.groupby("state_name")["county"].apply(list).to_dict()
     state_fips = df.groupby("state_name").first()["county_fips"].apply(lambda x: str(x)[:2]).to_dict()
