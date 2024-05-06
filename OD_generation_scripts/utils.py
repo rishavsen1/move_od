@@ -9,6 +9,7 @@ import gzip
 import os
 import shutil
 import zipfile
+import tqdm
 from io import StringIO
 
 
@@ -257,9 +258,19 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
     response = requests.get(url, stream=True)
 
     if response.status_code == 200:
+        total_size_in_bytes = int(response.headers.get("content-length", 0))
+        block_size = 1024
+
         os.makedirs(os.path.dirname(compressed_path), exist_ok=True)
-        with open(compressed_path, "wb") as f:
-            f.write(response.content)
+        progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
+        with open(compressed_path, "wb") as file:
+            for data in response.iter_content(block_size):
+                progress_bar.update(len(data))
+                file.write(response.content)
+        progress_bar.close()
+
+        if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
+            logger.error(f"Something went wrong!")
         logger.info(f"File downloaded and saved as: {compressed_path}")
 
         if type == "gzip":
@@ -275,5 +286,6 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
 
         os.remove(compressed_path)
         logger.info(f"Removed the compressed file: {compressed_path}")
+
     else:
         logger.error(f"Failed to download the file: Status code {response.status_code}")
