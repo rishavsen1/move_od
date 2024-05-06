@@ -85,7 +85,7 @@ class LocationsOSMSG:
         if os.path.exists(f"{self.output_path}/county_all_buildings.geojson"):
             buildings = gpd.read_file(f"{self.output_path}/county_all_buildings.geojson")
         else:
-            num_workers = multiprocessing.cpu_count() * 2
+            num_workers = multiprocessing.cpu_count()
             splits = self.split_bbox(miny, maxy, minx, maxx, num_workers)
             func_args = [(s[0], s[1], s[2], s[3], {"building": True}) for s in splits]
 
@@ -143,6 +143,7 @@ class LocationsOSMSG:
         # saving residential buildings
         # TODO: Error Handling
         try:
+            res_build = res_build[["geometry", "GEOID", "intpt", "location"]]
             res_build.to_csv(f"{self.output_path}/county_residential_buildings.csv", index=False)
         except FileNotFoundError:
             self.logger.info(f"File not found: {self.output_path}/county_residential_buildings.csv")
@@ -213,6 +214,7 @@ class LocationsOSMSG:
 
         else:
             combined_locations.GEOID = combined_locations.GEOID.astype(str).apply(lambda x: x.split(".")[0])
+            
             combined_locations.to_csv(f"{self.output_path}/county_work_locations.csv", index=False)
 
     # ## adding safegraph poi locations

@@ -185,10 +185,11 @@ if begin:
                 download_shapefile(logger, state, state_fips=state_fips[state], year="2023")
 
         if ms_enabled:
-            ms_path = f"../data/states/{state}/{state}.geojson"
+            state_stripped = state.replace(" ", "")
+            ms_path = f"../data/states/{state}/{state_stripped}.geojson"
             if not os.path.exists(ms_path):
                 with st.spinner("Downloading Global Buildings Footprint"):
-                    download_ms_buildings(logger, state)
+                    download_ms_buildings(logger, state, state_stripped)
 
         if "LODES" in choice:
             flag = False
@@ -215,9 +216,7 @@ if begin:
 
         with st.spinner("In Progress..."):
 
-            if os.path.exists(f"{output_path}/county_lodes_2019.csv") and os.path.exists(
-                f"{output_path}/county_cbg.csv"
-            ):
+            if os.path.exists(f"{output_path}/county_lodes.csv") and os.path.exists(f"{output_path}/county_cbg.csv"):
                 st.success("LODES filtered data already present")
             else:
                 lodes_read = lodes_read.LodesGen(fips, county_lodes_paths, county_cbg, output_path, logger, od_option)
@@ -272,6 +271,12 @@ if begin:
                 sample_size=sample_size,
             )
 
+            logger.info(f"Lodes entries: {county_lodes.shape[0]}")
+            logger.info(f"Census block groups: {county_cbg.shape[0]}")
+            logger.info(f"OSM Residential buildings: {res_build.shape[0]}")
+            logger.info(f"OSM Commercial buildings: {com_build.shape[0]}")
+            logger.info(f"Microsoft Building Footprints buildings: {ms_build.shape[0]}")
+
             # for proc in range(len(choice)):
             # TODO: wont work like this, need to add two processes separately
             # process = multiprocessing.Process(target=lodes_combs.main, args=(county_cbg,\
@@ -287,7 +292,7 @@ if begin:
                     datetime_ranges,
                     logger,
                 )
-                lodes_combs.main(county_cbg, res_build, com_build, ms_build, county_lodes, lodes_cpu_max, sample_size)
+                lodes_combs.main(county_cbg, res_build, com_build, ms_build, county_lodes, sample_size)
                 st.success("Custom OD generated (LODES)")
             if "Safegraph" in choice:
                 sg_combs = sg_combs.SgCombs(

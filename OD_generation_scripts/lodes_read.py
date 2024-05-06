@@ -3,11 +3,8 @@
 
 import geopandas as gpd
 import pandas as pd
-
-# county_lodes_paths = ['../data/lodes/tn_od_main_JT00_2019.csv', '../data/lodes/tn_od_main_JT01_2019.csv',
-#                     '../data/lodes/tn_od_main_JT02_2019.csv', '../data/lodes/tn_od_main_JT03_2019.csv',
-#                     '../data/lodes/tn_od_main_JT04_2019.csv', '../data/lodes/tn_od_main_JT05_2019.csv']
-# COUNTY = '037'
+import multiprocessing
+from multiprocessing import Pool
 
 
 class LodesGen:
@@ -19,6 +16,18 @@ class LodesGen:
         self.logger = logger
         self.od_option = od_option
 
+    def read_and_process_lodes_file(self, lodes_path):
+        # Read CSV file and rename columns
+        temp_df = pd.read_csv(lodes_path).rename(columns={"S000": "total_jobs"})[
+            ["h_geocode", "w_geocode", "total_jobs"]
+        ]
+
+        # Convert geocode columns
+        temp_df.h_geocode = temp_df.h_geocode.astype(str).str[:-3].str.lstrip("0")
+        temp_df.w_geocode = temp_df.w_geocode.astype(str).str[:-3].str.lstrip("0")
+
+        return temp_df
+
     def generate(self):
         self.logger.info("Running lodes_read.py")
         # loading parts of the available data
@@ -28,24 +37,13 @@ class LodesGen:
         self.logger.info(self.county_lodes_paths)
         all_lodes = pd.DataFrame()
 
-        for i, lodes_path in enumerate(self.county_lodes_paths):
-            temp_df = pd.read_csv(lodes_path).rename(columns={"S000": "total_jobs"})[
-                ["h_geocode", "w_geocode", "total_jobs"]
-            ]
-            # all_lodes = all_lodes.append(temp_df)
-            all_lodes = pd.concat([all_lodes, temp_df])
+        pool = Pool(processes=multiprocessing.cpu_count())
+        results = pool.map(self.read_and_process_lodes_file, self.county_lodes_paths)
+        pool.close()
+        pool.join()
 
-        # filtering out duplicates
+        all_lodes = pd.concat(results)
         lodes = all_lodes.drop_duplicates()
-
-        lodes.h_geocode = lodes.h_geocode.astype(str)
-        lodes.w_geocode = lodes.w_geocode.astype(str)
-        # initially in form of blocks - converting to match cbgs
-        lodes["h_geocode"] = lodes["h_geocode"].str[:-3]
-        lodes["w_geocode"] = lodes["w_geocode"].str[:-3]
-
-        lodes.h_geocode = lodes.h_geocode.str.lstrip("0")
-        lodes.w_geocode = lodes.w_geocode.str.lstrip("0")
 
         cbgs = gpd.read_file(self.county_cbg)[["GEOID", "COUNTYFP", "geometry"]]
         cbgs.GEOID = cbgs.GEOID.astype(str)
@@ -53,15 +51,6 @@ class LodesGen:
 
         if self.od_option == "Origin and Destination in same County":
             cbgs = cbgs[cbgs.COUNTYFP == self.county_fips][["GEOID", "geometry"]]
-        elif self.od_option == "Only Origin in County":
-            cbgs_origin = cbgs[cbgs.COUNTYFP == self.county_fips][["GEOID", "geometry"]]
-        elif self.od_option == "Only Destination in County":
-            cbgs_dest = cbgs[cbgs.COUNTYFP == self.county_fips][["GEOID", "geometry"]]
-
-        # self.logger.info(cbgs.head())
-
-        # filtering TN LODES data for cbgs only in selected county
-        if self.od_option == "Origin and Destination in same County":
             area_lodes = (
                 pd.merge(lodes, cbgs, left_on="h_geocode", right_on="GEOID", how="inner")
                 .merge(cbgs, left_on="w_geocode", right_on="GEOID", how="inner")
@@ -69,6 +58,7 @@ class LodesGen:
                 .reset_index(drop=True)
             )
         elif self.od_option == "Only Origin in County":
+            cbgs_origin = cbgs[cbgs.COUNTYFP == self.county_fips][["GEOID", "geometry"]]
             area_lodes = (
                 pd.merge(
                     lodes,
@@ -82,6 +72,7 @@ class LodesGen:
                 .reset_index(drop=True)
             )
         elif self.od_option == "Only Destination in County":
+            cbgs_dest = cbgs[cbgs.COUNTYFP == self.county_fips][["GEOID", "geometry"]]
             area_lodes = (
                 pd.merge(lodes, cbgs, left_on="h_geocode", right_on="GEOID", how="inner")
                 .merge(cbgs_dest, left_on="w_geocode", right_on="GEOID", how="inner")
@@ -90,7 +81,7 @@ class LodesGen:
             )
 
         area_lodes = area_lodes.drop(["GEOID_x", "GEOID_y", "geometry_x", "geometry_y"], axis=1)
-        # self.logger.info(area_lodes.head())
+
         # it is stored at the block level (smaller area than CBG)
         area_lodes.to_csv(f"{self.output_path}/county_lodes.csv", index=False)
         self.logger.info(f"County has {area_lodes.shape[0]} LODES entries")
@@ -104,5 +95,7 @@ class LodesGen:
         cbg = cbg[cbg.COUNTYFP == self.county_fips]
         cbg.GEOID = cbg.GEOID.astype(str)
 
-        cbg.to_csv(f"{self.output_path}/county_cbg.csv", index=False)
+        cbg = cbg[["GEOID", "COUNTYFP", "geometry"]]
+
+        cbg.to_csv(f"{self.output_path}/county_cbg", index=False)
         self.logger.info(f"County has {cbg.shape[0]} census block groups")

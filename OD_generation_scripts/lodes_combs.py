@@ -5,11 +5,11 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import random
+import dask
 from shapely.geometry import Point
-from datetime import datetime, timedelta
-import os
-import multiprocessing
-
+from collections import defaultdict
+from multiprocessing import Pool, cpu_count
+from dask import delayed, compute
 from utils import marginal_dist
 
 
@@ -46,14 +46,9 @@ class LodesComb:
             yield current
             current += delta
 
-    def read_data(self, county_lodes, county_cbg, res_build, com_build, ms_build):
+    def read_county_lodes(self, county_lodes, county_cbg):
         self.logger.info("Running lodes_comb.py func")
 
-        # # loading LODES data
-        # county_lodes = pd.read_csv(
-        #     f"{self.data_path}/county_lodes_2019.csv",
-        #     dtype={"TRACTCE20_home": "string", "TRACTCE20_work": "string"},
-        # )
         county_lodes.w_geocode = county_lodes.w_geocode.astype(str)
         county_lodes.h_geocode = county_lodes.h_geocode.astype(str)
 
@@ -73,234 +68,132 @@ class LodesComb:
         )
         county_lodes = gpd.GeoDataFrame(county_lodes)
 
-        # # loading Hamilton county geodata
-        # county_cbg = pd.read_csv(f"{self.data_path}/county_cbg.csv")
-        # county_cbg["intpt"] = county_cbg[["INTPTLAT", "INTPTLON"]].apply(
-        #     lambda p: Lodes_comb.intpt_func(p), axis=1
-        # )
-        # county_cbg = gpd.GeoDataFrame(
-        #     county_cbg, geometry=gpd.GeoSeries.from_wkt(county_cbg.geometry)
-        # )
-        # county_cbg.GEOID = county_cbg.GEOID.astype(str)
-        # county_cbg["location"] = county_cbg.intpt.apply(lambda p: [p.y, p.x])
+        return county_lodes
 
-        # # loading residential buildings
-        # res_build = pd.read_csv(
-        #     f"{self.data_path}/county_residential_buildings.csv", index_col=0
-        # )
-        # res_build = gpd.GeoDataFrame(
-        #     res_build, geometry=gpd.GeoSeries.from_wkt(res_build.geometry)
-        # )
-        # res_build["location"] = res_build.geometry.apply(lambda p: [p.y, p.x])
-        # res_build.GEOID = res_build.GEOID.astype(str)
-
-        # # loading work buildings
-        # com_build = pd.read_csv(
-        #     f"{self.data_path}/county_dest_locations.csv", index_col=0
-        # )
-        # com_build = gpd.GeoDataFrame(
-        #     com_build, geometry=gpd.GeoSeries.from_wkt(com_build.geometry)
-        # )
-        # com_build["location"] = com_build.geometry.apply(lambda p: [p.y, p.x])
-        # com_build = com_build.reset_index()
-        # com_build.GEOID = com_build.GEOID.astype(str)
-
-        # # loading all buildings (MS dataset)
-
-        # if self.ms_enabled:
-        #     ms_build = pd.read_csv(f"{self.data_path}/county_buildings_MS.csv")
-        # ms_build = gpd.GeoDataFrame(
-        #     ms_build, geometry=gpd.GeoSeries.from_wkt(ms_build.geo_centers)
-        # )
-        # ms_build.GEOID = ms_build.GEOID.astype(str)
-        # ms_build["location"] = ms_build.geometry.apply(lambda p: [p.y, p.x])
-
-        # generating array of start and return times (in 15 min intervals)
-        # times = []
-
-        # for start_time, end_time in zip(self.start_datetime, self.end_datetime):
-        #     times.append([
-        #         datetime.strptime(dt.strftime("%H:%M"), "%H:%M")
-        #         for dt in self.datetime_range(
-        #             start_time, end_time, timedelta(seconds=self.timedelta)
-        #         )
-        #     ])
-
-        # for time in range(len(self.time_start)):
-        #     times.append(
-        #         [
-        #             datetime.strptime(dt.strftime("%H:%M"), "%H:%M")
-        #             for dt in self.datetime_range(
-        #                 datetime.combine(self.time),
-        #                 datetime.combine(
-        #                     2023,
-        #                     9,
-        #                     1,
-        #                     self.time_end[time].hour,
-        #                     self.time_end[time].minute,
-        #                     self.time_end[time].second,
-        #                 ),
-        #                 timedelta(seconds=self.timedelta),
-        #             )
-        #         ]
-        #     )
-
-        # times_evening = [datetime.strptime(dt.strftime('%H:%M'), '%H:%M') for dt in
-        #     datetime_range(datetime(2016, 9, 1, self.time_start[time].hour, self.time_start[time].minute, self.time_start[time].second), datetime(2016, 9, 1, self.time_end[time].hour, self.time_end[time].minute, self.time_end[time].second),
-        #     timedelta(seconds=self.timedelta))]
-
-        # return county_lodes, county_cbg, res_build, com_build, ms_build, times
-        return county_lodes, county_cbg, res_build, com_build, ms_build
-
-    def generate_OD(self, day, county_lodes, county_cbg, res_build, com_build, ms_build, datetime_ranges, sample_size):
-        # for day in day_count:
-        self.logger.info(f"Generating results for day {day}")
+    def generate_OD(self, params):
+        day, county_lodes, county_cbg, res_build, com_build, ms_build, datetime_ranges = params
         prob_matrix = pd.DataFrame()
 
-        # self.logger.info(county_lodes.head())
-        county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
-        for idx, movement in county_lodes.iterrows():
-            res = res_build[res_build.GEOID == movement.h_geocode].reset_index(drop=True)
+        temp_data = []  # List to store all temporary data frames
+
+        # Pre-filtering based on unique GEOIDs to reduce lookup times
+        unique_h_geocodes = county_lodes["h_geocode"].unique()
+        unique_w_geocodes = county_lodes["w_geocode"].unique()
+
+        res_build_filtered = res_build[res_build["GEOID"].isin(unique_h_geocodes)]
+        com_build_filtered = com_build[com_build["GEOID"].isin(unique_w_geocodes)]
+        ms_build_filtered = ms_build[ms_build["GEOID"].isin(np.concatenate((unique_h_geocodes, unique_w_geocodes)))]
+        county_cbg_filtered = county_cbg[
+            county_cbg["GEOID"].isin(np.concatenate((unique_h_geocodes, unique_w_geocodes)))
+        ]
+
+        # Creating dictionaries for quick look-up
+        res_dict = {geo_id: df for geo_id, df in res_build_filtered.groupby("GEOID")}
+        com_dict = {geo_id: df for geo_id, df in com_build_filtered.groupby("GEOID")}
+        ms_dict = {geo_id: df for geo_id, df in ms_build_filtered.groupby("GEOID")}
+        cbg_dict = {geo_id: df for geo_id, df in county_cbg_filtered.groupby("GEOID")}
+
+        for index, movement in county_lodes.iterrows():
+            # Retrieve data with fallbacks
+            res = res_dict.get(movement.h_geocode, pd.DataFrame())
+            if res.empty and self.ms_enabled:
+                res = ms_dict.get(movement.h_geocode, pd.DataFrame())
             if res.empty:
-                if self.ms_enabled:
-                    res = (
-                        ms_build[ms_build.GEOID == movement.h_geocode]
-                        .sample(n=movement.total_jobs, random_state=42, replace=True)
-                        .reset_index(drop=True)
-                    )
-                if res.empty:
-                    res = county_cbg[county_cbg.GEOID == movement.h_geocode].reset_index(drop=True)
+                res = cbg_dict.get(movement.h_geocode, pd.DataFrame())
 
-            com = com_build[com_build.GEOID == movement.w_geocode].reset_index(drop=True)
+            com = com_dict.get(movement.w_geocode, pd.DataFrame())
+            if com.empty and self.ms_enabled:
+                com = ms_dict.get(movement.w_geocode, pd.DataFrame())
             if com.empty:
-                if self.ms_enabled:
-                    com = (
-                        ms_build[ms_build.GEOID == movement.w_geocode]
-                        .sample(n=movement.total_jobs, random_state=42, replace=True)
-                        .reset_index(drop=True)
-                    )
-                if com.empty:
-                    com = county_cbg[county_cbg.GEOID == movement.w_geocode].reset_index(drop=True)
+                com = cbg_dict.get(movement.w_geocode, pd.DataFrame())
 
-            r = res.reset_index(drop=True)
-            c = com.reset_index(drop=True)
+            # Handle job sampling
+            num_res = len(res)
+            num_com = len(com)
+            repeat_res = movement.total_jobs // num_res if num_res else 0
+            repeat_com = movement.total_jobs // num_com if num_com else 0
+            additional_res = movement.total_jobs % num_res
+            additional_com = movement.total_jobs % num_com
 
-            for job in range(movement.total_jobs):
-                if c.empty:
-                    c = com
-                if r.empty:
-                    r = res
+            # Create sample for res and com
+            sampled_res = pd.concat(
+                [res] * repeat_res + [res.sample(n=additional_res, random_state=42)], ignore_index=True
+            )
+            sampled_com = pd.concat(
+                [com] * repeat_com + [com.sample(n=additional_com, random_state=42)], ignore_index=True
+            )
 
-                rand_r = random.randrange(0, r.shape[0])
-                rand_c = random.randrange(0, c.shape[0])
-                r_df = r.iloc[rand_r]
-                c_df = c.iloc[rand_c]
-                r = r.drop([rand_r]).reset_index(drop=True)
-                c = c.drop([rand_c]).reset_index(drop=True)
+            # Shuffle to avoid pattern repeats
+            sampled_res = sampled_res.sample(frac=1, random_state=42).reset_index(drop=True)
+            sampled_com = sampled_com.sample(frac=1, random_state=42).reset_index(drop=True)
 
-                time_slot = []
+            # Generate temporary GeoDataFrame entries
 
-                for time in range(len(datetime_ranges)):
-                    # self.logger.info(times[time])
-                    time_slot.append(np.random.choice(datetime_ranges[time], size=1, replace=True))
+            for i in range(movement.total_jobs):
+                temp_data.append(
+                    {
+                        "h_geocode": movement.h_geocode,
+                        "w_geocode": movement.w_geocode,
+                        "total_jobs": movement.total_jobs,
+                        "origin_loc_lat": sampled_res.iloc[i]["location"][0],
+                        "origin_loc_lon": sampled_res.iloc[i]["location"][1],
+                        "dest_loc_lat": sampled_com.iloc[i]["location"][0],
+                        "dest_loc_lon": sampled_com.iloc[i]["location"][1],
+                    }
+                )
 
-                # time_slot1 = np.random.choice(times_morning, size=1, replace=True)
-                # time_slot2 = np.random.choice(times_evening, size=1, replace=True)
+        # Create GeoDataFrame after the loop
+        prob_matrix = gpd.GeoDataFrame(temp_data)
 
-                temp = gpd.GeoDataFrame()
+        return (day, prob_matrix)
 
-                temp.loc[job, "h_geocode"] = movement.h_geocode
-                temp.loc[job, "w_geocode"] = movement.w_geocode
-                temp.loc[job, "total_jobs"] = movement.total_jobs
-                temp.loc[job, "origin_loc_lat"] = r_df.location[0]
-                temp.loc[job, "origin_loc_lon"] = r_df.location[1]
-                temp.loc[job, "dest_loc_lat"] = c_df.location[0]
-                temp.loc[job, "dest_loc_lon"] = c_df.location[1]
+    def main(self, county_cbg, res_build, com_build, ms_build, county_lodes, sample_size):
+        county_lodes = self.read_county_lodes(county_lodes, county_cbg)
 
-                for time in range(len(datetime_ranges)):
-                    temp.loc[job, f"pickup_time_{time}"] = time_slot[time][0].time()
-                    time_part = time_slot[time][0].time()
-                    seconds_since_midnight = (time_part.hour * 3600) + (time_part.minute * 60) + time_part.second
-                    temp.loc[job, f"pickup_time_{time}_secs"] = seconds_since_midnight
-                    temp.loc[job, f"pickup_time_{time}_str"] = time_slot[time][0].strftime("%H:%M:%S")
-
-                prob_matrix = pd.concat([prob_matrix, temp], ignore_index=True)
-
-        # convert the lat and lon points to shapely Points
-        prob_matrix["origin_geom"] = prob_matrix[["origin_loc_lat", "origin_loc_lon"]].apply(
-            lambda row: self.func_origin_pt(row), axis=1
-        )
-        prob_matrix["dest_geom"] = prob_matrix[["dest_loc_lat", "dest_loc_lon"]].apply(
-            lambda row: self.func_dest_pt(row), axis=1
-        )
-        prob_matrix.h_geocode = prob_matrix.h_geocode.astype(str)
-        prob_matrix.w_geocode = prob_matrix.w_geocode.astype(str)
-
-        prob_matrix.to_csv(f"{self.data_path}/lodes_combs/lodes_{day}.csv", index=False)
-        self.logger.info(f"LODES - Day {day} generated")
-
-    def main(self, county_cbg, res_build, com_build, ms_build, county_lodes, lodes_cpu_max, sample_size):
-        (county_lodes, county_cbg, res_build, com_build, ms_build) = Lodes_comb.read_data(
-            self, county_lodes, county_cbg, res_build, com_build, ms_build
-        )
-
-        # setting the random seed
+        # Setting the random seed
         np.random.seed(42)
         random.seed(42)
 
-        days = list(set([day[0].date() for day in self.datetime_ranges]))
+        # Generate marginal distributions
+        county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
 
-        # Lodes_comb.generate_OD(county_lodes, county_cbg, res_build, com_build, ms_build, times)
-        weekdays = []
-        weekends = []
+        # Determine days and setup for parallel execution
+        days = sorted(set(day[0].date() for day in self.datetime_ranges))
+        num_cpus = cpu_count() - 1
+        num_tasks = max(len(days), num_cpus)
+        chunk_size = max(1, len(county_lodes) // num_tasks)
 
-        # weekdays = days
-
-        # self.logger.info(days)
+        delayed_tasks = []
         for day in days:
-            if day.weekday() <= 7:
-                self.logger.info(day.weekday())
-                weekdays.append(day)
-            else:
-                weekends.append(day)
-                pd.DataFrame().to_csv(f"{self.data_path}/lodes_combs/lodes_{day}.csv", index=False)
-
-        day_count = len(weekdays)
-
-        processes = []
-        cpu_count = os.cpu_count()
-        while day_count > 0:
-            num_processes = 1
-            if day_count >= cpu_count:
-                num_processes = cpu_count
-            else:
-                num_processes = day_count
-
-            day_sub = weekdays[:num_processes]
-            weekdays = weekdays[num_processes:]
-            day_count -= num_processes
-
-            self.logger.info(f"Running {num_processes} day(s) in parallel. {day_count} day(s) left.")
-
-            for proc in range(num_processes):
-                process = multiprocessing.Process(
-                    target=Lodes_comb.generate_OD,
-                    args=(
-                        self,
-                        day_sub[proc],
-                        county_lodes,
+            current_index = 0
+            while current_index < len(county_lodes):
+                end_index = min(current_index + chunk_size, len(county_lodes))
+                delayed_task = delayed(self.generate_OD)(
+                    (
+                        day,
+                        county_lodes.iloc[current_index:end_index],
                         county_cbg,
                         res_build,
                         com_build,
                         ms_build,
                         self.datetime_ranges,
-                        sample_size,
-                    ),
+                    )
                 )
-                process.start()
-                processes.append(process)
+                delayed_tasks.append(delayed_task)
+                current_index = end_index
 
-                # Wait for all processes to finish
-            for process in processes:
-                process.join()
-        self.logger.info(f"All days generated")
+        # Execute all tasks in parallel
+        results = compute(*delayed_tasks)
+
+        # Aggregate results by day and save
+        results_by_day = defaultdict(list)
+        for result in results:
+            day, df = result
+            results_by_day[day].append(df)
+
+        for day, dataframes in results_by_day.items():
+            combined_df = pd.concat(dataframes, ignore_index=True)
+            combined_df.to_csv(f"{self.data_path}/lodes_combs/lodes_{day}.csv", index=False)
+            self.logger.info(f"Saved results for day {day}")
+
+        self.logger.info("All days generated")

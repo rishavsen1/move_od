@@ -35,42 +35,36 @@ def write_to_file(output_path, file_path, file_name, df):
     df.to_csv(f"{output_path}/{file_path}/{file_name}", index=False)
 
 
-def sample_rows(grouped_df, probabilities, remaining_jobs, origin_col, dest_col):
-    # Estimate a safe number of rows to sample to avoid overshooting the remaining jobs
-    safe_sample_size = max(1, min(len(probabilities), int(remaining_jobs / probabilities.mean())))
-
-    # Keep sampling until the sum of total_jobs in sampled rows is close to remaining_jobs
-    sampled_rows = pd.DataFrame(columns=[origin_col, dest_col, "total_jobs"])
-    while sampled_rows["total_jobs"].sum() < remaining_jobs and len(probabilities) > 0:
-        # Sample one row at a time to avoid overshooting
-        chosen_row = probabilities.sample(n=1, weights=probabilities, random_state=random.randint(0, 100))
-        chosen_row_df = grouped_df.loc[chosen_row.index]
-        if sampled_rows["total_jobs"].sum() + chosen_row_df["total_jobs"].values[0] <= remaining_jobs:
-            sampled_rows = pd.concat([sampled_rows, chosen_row_df.reset_index()])
-        probabilities.drop(chosen_row.index, inplace=True)
-
-    return sampled_rows
-
-
-def marginal_dist(df, origin_col, dest_col, sample_size):
-    grouped_df = df.groupby([origin_col, dest_col]).first()
-
-    # Calculate probabilities
+def sample_rows(grouped_df, sample_size):
+    """Efficiently sample rows based on the 'total_jobs' distribution."""
+    # Calculate cumulative sum of jobs and total jobs
     total_jobs = grouped_df["total_jobs"].sum()
     probabilities = grouped_df["total_jobs"] / total_jobs
 
-    subsampled_df = pd.DataFrame()
-    if sample_size > total_jobs:
-        remaining_jobs = total_jobs
-    remaining_jobs = sample_size
+    # Sample the data
+    chosen_indices = np.random.choice(grouped_df.index, size=sample_size, replace=True, p=probabilities)
+    sampled_df = grouped_df.loc[chosen_indices].copy()
+    sampled_df["sampled_jobs"] = 1  # Each row contributes one job in the sample
 
-    while remaining_jobs > 0 and not probabilities.empty:
-        sampled_rows = sample_rows(grouped_df, probabilities, remaining_jobs, origin_col, dest_col)
-        subsampled_df = pd.concat([subsampled_df, sampled_rows])
-        remaining_jobs = sample_size - subsampled_df["total_jobs"].sum()
-        # probabilities.drop(sampled_rows.index, inplace=True)
+    # Aggregate sampled data
+    sampled_df = sampled_df.groupby(level=[0, 1]).sum().reset_index()
+    return sampled_df
 
-    return subsampled_df
+
+def marginal_dist(df, origin_col, dest_col, sample_size):
+    """Create a subsampled DataFrame based on marginal distributions."""
+    # Group by origin and destination, aggregating total_jobs
+    grouped_df = df.groupby([origin_col, dest_col])["total_jobs"].sum().reset_index()
+    grouped_df.set_index([origin_col, dest_col], inplace=True)
+
+    # Handle case where sample_size exceeds the total available jobs
+    if sample_size > grouped_df["total_jobs"].sum():
+        sample_size = int(grouped_df["total_jobs"].sum())
+
+    # Sample the rows according to the total_jobs distribution
+    sampled_df = sample_rows(grouped_df, sample_size)
+
+    return sampled_df
 
 
 def combine_date_time(date, time):
@@ -251,11 +245,11 @@ def download_lodes(logger, state, state_abbr, lodes_code, year):
     download_and_decompress(type, logger, url, compressed_path, decompressed_path)
 
 
-def download_ms_buildings(logger, state):
+def download_ms_buildings(logger, state, state_stripped):
     type = "zip"
-    url = f"https://usbuildingdata.blob.core.windows.net/usbuildings-v2/{state}.geojson.zip"
-    compressed_path = f"../data/states/{state}/{state}.geojson.zip"
-    decompressed_path = f"../data/states/{state}/"  # Path to the directory to extract files
+    url = f"https://usbuildingdata.blob.core.windows.net/usbuildings-v2/{state_stripped}.geojson.zip"
+    compressed_path = f"../data/states/{state_stripped}.geojson.zip"
+    decompressed_path = f"../data/states/{state_stripped}/"  # Path to the directory to extract files
     download_and_decompress(type, logger, url, compressed_path, decompressed_path)
 
 

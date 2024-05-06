@@ -9,7 +9,6 @@ import pandas as pd
 
 
 class MSBuildings:
-    print("Running read_ms_buildings.py")
 
     def __init__(self, county_fips, county_cbg, ms_buildings_path, output_path, logger) -> None:
         self.county_fips = county_fips
@@ -19,6 +18,7 @@ class MSBuildings:
         self.logger = logger
 
     def buildings(self):
+        print("Running read_ms_buildings.py")
         county_cbg = self.county_cbg[self.county_cbg["COUNTYFP"] == self.county_fips].reset_index(drop=True)
         county_cbg.GEOID = county_cbg.GEOID.astype(str)
         county_cbg = county_cbg.to_crs("epsg:4326")
@@ -27,4 +27,5 @@ class MSBuildings:
 
         county_builds["geo_centers"] = county_builds.geometry.centroid
         county_builds["location"] = county_builds.geo_centers.apply(lambda p: [p.y, p.x])
+        county_builds = county_builds[["geometry", "GEOID", "geo_centers", "location"]]
         county_builds.to_csv(f"{self.output_path}/county_buildings_MS.csv", index=False)
