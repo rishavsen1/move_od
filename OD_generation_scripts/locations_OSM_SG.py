@@ -72,7 +72,7 @@ class LocationsOSMSG:
         if os.path.exists(f"{self.output_path}/county_all_buildings.geojson"):
             buildings = gpd.read_file(f"{self.output_path}/county_all_buildings.geojson")
         else:
-            num_workers = multiprocessing.cpu_count()
+            num_workers = multiprocessing.cpu_count() * 2
             splits = self.split_bbox(miny, maxy, minx, maxx, num_workers)
             func_args = [(s[0], s[1], s[2], s[3], {"building": True}) for s in splits]
 
