@@ -54,7 +54,7 @@ with col1:
 with col2:
     county = st.selectbox("County", options=sorted(counties_in_state[state]), index=32)
 with col3:
-    fips = st.text_input("County's FIPS code", value=(str(county_fips[state, county][0])[-3:]))
+    county_fips = st.text_input("County's FIPS code", value=(str(county_fips[state, county][0])[-3:]))
 city = ""
 
 col1, col2, col3 = st.columns(3)
@@ -219,7 +219,7 @@ if begin:
             if os.path.exists(f"{output_path}/county_lodes.csv") and os.path.exists(f"{output_path}/county_cbg.csv"):
                 st.success("LODES filtered data already present")
             else:
-                lodes_read = lodes_read.LodesGen(fips, county_lodes_paths, county_cbg, output_path, logger, od_option)
+                lodes_read = lodes_read.LodesGen(county_fips, county_lodes_paths, county_cbg, output_path, logger, od_option)
                 lodes_read.generate()
                 st.success("LODES data filtered")
 
@@ -230,7 +230,7 @@ if begin:
                     st.success("Safegraph filtered data already present")
                 else:
                     safegraph = safegraph.Safegraph(
-                        fips,
+                        county_fips,
                         city,
                         county_cbg,
                         safe_df,
@@ -247,7 +247,7 @@ if begin:
                 if os.path.exists(f"{output_path}/county_buildings_MS.csv"):
                     st.success("MS Buildings filtered already present")
                 else:
-                    ms_builds = read_ms_buildings.MSBuildings(fips, county_cbg, ms_path, output_path, logger)
+                    ms_builds = read_ms_buildings.MSBuildings(county_fips, county_cbg, ms_path, output_path, logger)
                     ms_builds.buildings()
                     st.success("MS Buildings data filtered")
 
@@ -258,7 +258,7 @@ if begin:
 
             else:
                 locations = locations_OSM_SG.LocationsOSMSG(
-                    fips, county, county_cbg, sg_enabled, output_path, logger, od_option
+                    county_fips, county, county_cbg, sg_enabled, output_path, logger, od_option
                 )
                 locations.find_locations_OSM()
                 st.success("Locations generated")

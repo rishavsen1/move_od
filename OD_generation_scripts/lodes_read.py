@@ -5,6 +5,7 @@ import geopandas as gpd
 import pandas as pd
 import multiprocessing
 from multiprocessing import Pool
+from utils import intpt_func
 
 
 class LodesGen:
@@ -94,8 +95,10 @@ class LodesGen:
         cbg = gpd.read_file(self.county_cbg)
         cbg = cbg[cbg.COUNTYFP == self.county_fips]
         cbg.GEOID = cbg.GEOID.astype(str)
+        cbg["intpt"] = cbg[["INTPTLAT", "INTPTLON"]].apply(lambda p: intpt_func(p), axis=1)
+        cbg["location"] = cbg.intpt.apply(lambda p: [p.y, p.x])
 
-        cbg = cbg[["GEOID", "COUNTYFP", "geometry"]]
+        cbg = cbg[["GEOID", "COUNTYFP", "geometry", "intpt", "location"]]
 
         cbg.to_csv(f"{self.output_path}/county_cbg.csv", index=False)
         self.logger.info(f"County has {cbg.shape[0]} census block groups")

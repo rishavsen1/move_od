@@ -81,3 +81,4 @@ accessibility_estimation/outputs/
 /move_OD
 *csv
 accessibility_estimation/outputs2/income_tn.geojson
+config.py

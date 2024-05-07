@@ -12,33 +12,6 @@ from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-# COUNTY = '037'
-# AREA = 'Davidson'
-
-# print(COUNTY)
-
-# input Hamilton county geo file
-# county_cbg = gpd.read_file('../data/Tennessee Census Block Groups/tl_2020_47_bg.shp')
-
-# sg_enabled = False
-# sg = pd.read_csv('../data/sg_poi_cbgs.csv') # path removed due to privacy concerns
-
-
-def process_section(miny, maxy, minx, maxx, tags):
-    retries = 0
-    while retries < 5:
-        try:
-            geoms = ox.features_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
-            # print(geoms.columns)
-            geoms = geoms[["geometry", "building"]]
-            print(f"Got geometries for {miny, maxy, minx, maxx, tags}")
-            return geoms
-        except Exception as e:
-            print("Exception:", e)
-
-        retries += 1
-
-
 class LocationsOSMSG:
     def __init__(self, county, area, county_cbg, sg_enabled, output_path, logger, od_option):
         self.COUNTY = county
@@ -50,6 +23,20 @@ class LocationsOSMSG:
         self.logger = logger
         self.od_option = od_option
         self.logger.info("Initliazing locations_OSM_SG.py")
+
+    def process_section(self, miny, maxy, minx, maxx, tags):
+        retries = 0
+        while retries < 5:
+            try:
+                geoms = ox.features_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
+                # print(geoms.columns)
+                geoms = geoms[["geometry", "building"]]
+                print(f"Got geometries for {miny, maxy, minx, maxx, tags}")
+                return geoms
+            except Exception as e:
+                print("Exception:", e)
+
+            retries += 1
 
     def split_bbox(self, miny, maxy, minx, maxx, num_splits):
         width = maxx - minx
@@ -90,7 +77,7 @@ class LocationsOSMSG:
             func_args = [(s[0], s[1], s[2], s[3], {"building": True}) for s in splits]
 
             with ThreadPoolExecutor(max_workers=num_workers) as executor:
-                futures = [executor.submit(process_section, *args) for args in func_args]
+                futures = [executor.submit(self.process_section, *args) for args in func_args]
 
                 buildings = [future.result() for future in futures]
 
@@ -214,7 +201,7 @@ class LocationsOSMSG:
 
         else:
             combined_locations.GEOID = combined_locations.GEOID.astype(str).apply(lambda x: x.split(".")[0])
-            
+
             combined_locations.to_csv(f"{self.output_path}/county_work_locations.csv", index=False)
 
     # ## adding safegraph poi locations

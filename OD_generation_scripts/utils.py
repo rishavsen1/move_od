@@ -12,6 +12,8 @@ import zipfile
 import tqdm
 from io import StringIO
 
+# from config import CENSUS_API_KEY
+
 
 def intpt_func(row):
     return Point(row["INTPTLON"], row["INTPTLAT"])
@@ -147,10 +149,8 @@ def read_data(output_path, lodes=False, sg_enabled=False, ms_enabled=False, samp
     print("Reading data")
     # loading geometry data
     county_cbg = pd.read_csv(f"{output_path}/county_cbg.csv")
-    county_cbg["intpt"] = county_cbg[["INTPTLAT", "INTPTLON"]].apply(lambda p: intpt_func(p), axis=1)
     county_cbg = gpd.GeoDataFrame(county_cbg, geometry=gpd.GeoSeries.from_wkt(county_cbg.geometry))
     county_cbg.GEOID = county_cbg.GEOID.astype(str)
-    county_cbg["location"] = county_cbg.intpt.apply(lambda p: [p.y, p.x])
 
     # loading residential buildings
     res_build = pd.read_csv(
@@ -289,3 +289,25 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
 
     else:
         logger.error(f"Failed to download the file: Status code {response.status_code}")
+
+
+# def get_census_data(state_fips, county_fips):
+#     api_key = CENSUS_API_KEY
+#     url = "https://api.census.gov/data/2022/acs/acs5"
+
+#     params = {
+#         "get": "B01003_001E,NAME",
+#         "for": f"county:{county_fips}",
+#         "in": f"state:{state_fips}",
+#         "key": api_key,
+#     }
+
+#     response = requests.get(url, params=params)
+
+#     if response.status_code == 200:
+#         data = response.json()
+#         df = pd.DataFrame(data[1:], columns=data[0])
+#         df.to_csv("california_counties.csv", index=False)
+#         print("Data written to california_counties.csv")
+#     else:
+#         print("Failed to retrieve data:", response.status_code)
