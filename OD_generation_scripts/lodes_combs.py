@@ -10,7 +10,7 @@ from shapely.geometry import Point
 from collections import defaultdict
 from multiprocessing import Pool, cpu_count
 from dask import delayed, compute
-from utils import marginal_dist
+from utils import marginal_dist, get_travel_time_dict
 
 
 class LodesComb:
@@ -73,6 +73,9 @@ class LodesComb:
     def generate_OD(self, params):
         day, county_lodes, county_cbg, res_build, com_build, ms_build, datetime_ranges = params
         prob_matrix = pd.DataFrame()
+        mode_type = "drive"
+
+        specific_list = self.datetime_ranges[0]
 
         temp_data = []  # List to store all temporary data frames
 
@@ -94,7 +97,6 @@ class LodesComb:
         cbg_dict = {geo_id: df for geo_id, df in county_cbg_filtered.groupby("GEOID")}
 
         for index, movement in county_lodes.iterrows():
-            # Retrieve data with fallbacks
             res = res_dict.get(movement.h_geocode, pd.DataFrame())
             if res.empty and self.ms_enabled:
                 res = ms_dict.get(movement.h_geocode, pd.DataFrame())
@@ -107,7 +109,6 @@ class LodesComb:
             if com.empty:
                 com = cbg_dict.get(movement.w_geocode, pd.DataFrame())
 
-            # Handle job sampling
             num_res = len(res)
             num_com = len(com)
             repeat_res = movement.total_jobs // num_res if num_res else 0
@@ -115,7 +116,6 @@ class LodesComb:
             additional_res = movement.total_jobs % num_res
             additional_com = movement.total_jobs % num_com
 
-            # Create sample for res and com
             sampled_res = pd.concat(
                 [res] * repeat_res + [res.sample(n=additional_res, random_state=42)], ignore_index=True
             )
@@ -123,26 +123,42 @@ class LodesComb:
                 [com] * repeat_com + [com.sample(n=additional_com, random_state=42)], ignore_index=True
             )
 
-            # Shuffle to avoid pattern repeats
             sampled_res = sampled_res.sample(frac=1, random_state=42).reset_index(drop=True)
             sampled_com = sampled_com.sample(frac=1, random_state=42).reset_index(drop=True)
 
-            # Generate temporary GeoDataFrame entries
-
             for i in range(movement.total_jobs):
-                temp_data.append(
+                temp_dict = {
+                    "h_geocode": movement.h_geocode,
+                    "w_geocode": movement.w_geocode,
+                    "total_jobs": movement.total_jobs,
+                    "origin_loc_lat": sampled_res.iloc[i]["location"][0],
+                    "origin_loc_lon": sampled_res.iloc[i]["location"][1],
+                    "dest_loc_lat": sampled_com.iloc[i]["location"][0],
+                    "dest_loc_lon": sampled_com.iloc[i]["location"][1],
+                }
+
+                pickup_time = random.choice(specific_list)
+                time_part = pickup_time.time()
+                seconds_since_midnight = (time_part.hour * 3600) + (time_part.minute * 60) + time_part.second
+                temp_dict.update(
                     {
-                        "h_geocode": movement.h_geocode,
-                        "w_geocode": movement.w_geocode,
-                        "total_jobs": movement.total_jobs,
-                        "origin_loc_lat": sampled_res.iloc[i]["location"][0],
-                        "origin_loc_lon": sampled_res.iloc[i]["location"][1],
-                        "dest_loc_lat": sampled_com.iloc[i]["location"][0],
-                        "dest_loc_lon": sampled_com.iloc[i]["location"][1],
+                        "pickup_time": pickup_time.time(),
+                        "pickup_time_secs": seconds_since_midnight,
+                        "pickup_time_str": pickup_time.time().strftime("%H:%M:%S"),
+                    }
+                )
+                move_time, total_distance, distance_miles = list(get_travel_time_dict(mode_type, temp_dict).values())
+
+                temp_dict.update(
+                    {
+                        "time_taken": move_time,
+                        "total_distance": total_distance,
+                        "distance_miles": distance_miles,
                     }
                 )
 
-        # Create GeoDataFrame after the loop
+                temp_data.append(temp_dict)
+
         prob_matrix = gpd.GeoDataFrame(temp_data)
 
         return (day, prob_matrix)
@@ -150,14 +166,11 @@ class LodesComb:
     def main(self, county_cbg, res_build, com_build, ms_build, county_lodes, sample_size):
         county_lodes = self.read_county_lodes(county_lodes, county_cbg)
 
-        # Setting the random seed
         np.random.seed(42)
         random.seed(42)
 
-        # Generate marginal distributions
         county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
 
-        # Determine days and setup for parallel execution
         days = sorted(set(day[0].date() for day in self.datetime_ranges))
         num_cpus = cpu_count() - 1
         num_tasks = max(len(days), num_cpus)
@@ -182,10 +195,8 @@ class LodesComb:
                 delayed_tasks.append(delayed_task)
                 current_index = end_index
 
-        # Execute all tasks in parallel
         results = compute(*delayed_tasks)
 
-        # Aggregate results by day and save
         results_by_day = defaultdict(list)
         for result in results:
             day, df = result

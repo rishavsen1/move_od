@@ -4,13 +4,13 @@ import geopandas as gpd
 import numpy as np
 from datetime import datetime, timedelta
 import random
+import warnings
 
-# from logger import logger
 from shapely.geometry import Point
 import multiprocessing
 
+from utils import get_travel_time
 
-import warnings
 
 warnings.filterwarnings("ignore")
 
@@ -189,6 +189,8 @@ class SgCombs:
         )
 
         # convert the lat and lon points to shapely Points
+        prob_matrix_sg = get_travel_time(prob_matrix_sg)
+
         prob_matrix_sg.to_csv(f"{self.data_path}/safegraph_combs/sg_{day}.csv", index=False)
         self.logger.info(f"Generated for day {day}")
 
@@ -239,5 +241,6 @@ class SgCombs:
                 # Wait for all processes to finish
             for process in processes:
                 process.join()
+
         self.logger.info(f"All days generated")
         num_processes = os.cpu_count() if len(days) >= os.cpu_count() else len(days)

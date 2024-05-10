@@ -277,12 +277,6 @@ if begin:
             logger.info(f"OSM Commercial buildings: {com_build.shape[0]}")
             logger.info(f"Microsoft Building Footprints buildings: {ms_build.shape[0]}")
 
-            # for proc in range(len(choice)):
-            # TODO: wont work like this, need to add two processes separately
-            # process = multiprocessing.Process(target=lodes_combs.main, args=(county_cbg,\
-            #                             res_build, com_build, ms_build, county_lodes, lodes_cpu_max))
-            # process = multiprocessing.Process(target=sg_combs.main, args=(county_cbg,\
-            #                             res_build, com_build, ms_build, sg, sg_cpu_max))
             if "LODES" in choice:
                 lodes_combs = lodes_combs.LodesComb(
                     county_cbg,

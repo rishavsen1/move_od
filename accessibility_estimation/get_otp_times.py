@@ -5,10 +5,6 @@ import pandas as pd
 import os
 import sys
 
-# if len(sys.argv) < 2:
-#     print("Usage: python script.py CITY_NAME")
-#     sys.exit(1)
-
 
 async def traveltimeTransit(latHome, lonHome, latWork, lonWork, time, semaphore):
     async with semaphore:

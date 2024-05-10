@@ -9,10 +9,15 @@ import gzip
 import os
 import shutil
 import zipfile
-import tqdm
+import subprocess
 from io import StringIO
+from multiprocessing import cpu_count, Pool
+from dask import delayed, compute
+from tqdm.auto import tqdm
 
-# from config import CENSUS_API_KEY
+from config import CENSUS_API_KEY
+
+KM_TO_MILES = 0.621371
 
 
 def intpt_func(row):
@@ -291,23 +296,202 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
         logger.error(f"Failed to download the file: Status code {response.status_code}")
 
 
-# def get_census_data(state_fips, county_fips):
-#     api_key = CENSUS_API_KEY
-#     url = "https://api.census.gov/data/2022/acs/acs5"
+def run_script(script_path, logger):
+    with subprocess.Popen([script_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as proc:
+        # Read the output line by line as it is produced
+        for line in proc.stdout:
+            print(line, end="")  # Print to console in real-time
+            logger.info(line.strip())  # Log each line
 
-#     params = {
-#         "get": "B01003_001E,NAME",
-#         "for": f"county:{county_fips}",
-#         "in": f"state:{state_fips}",
-#         "key": api_key,
-#     }
+        # Check for errors and log them
+        for line in proc.stderr:
+            logger.error(line.strip())
 
-#     response = requests.get(url, params=params)
+    # Wait for the process to finish and get the exit code
+    proc.wait()
+    return proc.returncode
 
-#     if response.status_code == 200:
-#         data = response.json()
-#         df = pd.DataFrame(data[1:], columns=data[0])
-#         df.to_csv("california_counties.csv", index=False)
-#         print("Data written to california_counties.csv")
-#     else:
-#         print("Failed to retrieve data:", response.status_code)
+
+def traveltimeDrive(row):
+    latStart, lonStart, latDest, lonDest, time, mode_type = (
+        row["origin_loc_lat"],
+        row["origin_loc_lon"],
+        row["dest_loc_lat"],
+        row["dest_loc_lon"],
+        str(row["pickup_time_str"]),
+        row["mode_type"],
+    )
+    modes = {"drive": "CAR", "transit": "WALK,TRANSIT", "walk": "WALK"}
+    mode = modes[mode_type]
+    request_url = f"http://localhost:8080/otp/routers/default/plan?fromPlace={latStart},{lonStart}&toPlace={latDest},{lonDest}&mode={mode}&date=01-26-2024&time={time}&maxWalkDistance=100000"
+
+    res_dict = {
+        "origin_loc_lat": latStart,
+        "origin_loc_lon": lonStart,
+        "dest_loc_lat": latDest,
+        "dest_loc_lon": lonDest,
+        "error": "",  # include an error field in your result dictionary
+    }
+
+    try:
+        response = requests.get(request_url)
+        if response.status_code == 200:
+            data = response.json()
+            try:
+                if "plan" in data and "itineraries" in data["plan"]:
+                    distance = sum(leg["distance"] for leg in data["plan"]["itineraries"][0]["legs"])
+                    res_dict.update(
+                        {"transit_time": int(data["plan"]["itineraries"][0]["duration"]), "distance_m": distance}
+                    )
+            except (KeyError, TypeError) as e:
+                res_dict["error"] = "Error parsing response data: {}".format(e)
+        else:
+            res_dict["error"] = f"HTTP error {response.status_code}"
+
+    except requests.exceptions.RequestException as e:
+        res_dict["error"] = f"Request failed: {e}"
+
+    return res_dict
+
+
+def process_rows_drive(mode_type, dataframe):
+    data_list = dataframe
+    if not isinstance(dataframe, dict):
+        data_list = dataframe.to_dict("records")
+        for data in data_list:
+            data.update({"mode_type": mode_type})
+        delayed_tasks = [delayed(traveltimeDrive)(data) for data in data_list]
+
+        results = []
+        for result in tqdm(compute(*delayed_tasks, scheduler="threads"), total=len(data_list)):
+            results.append(result)
+    else:
+        data_list.update({"mode_type": mode_type})
+        results = [traveltimeDrive(data_list)]
+
+    return results
+
+
+def get_travel_time(mode_type, trips_df):
+    results = process_rows_drive(mode_type, trips_df)
+    for res in results:
+        matching_rows = trips_df[
+            (trips_df["origin_loc_lat"] == res["origin_loc_lat"])
+            & (trips_df["origin_loc_lon"] == res["origin_loc_lon"])
+            & (trips_df["dest_loc_lat"] == res["dest_loc_lat"])
+            & (trips_df["dest_loc_lon"] == res["dest_loc_lon"])
+        ]
+
+        if not matching_rows.empty:
+            for index in matching_rows.index:
+                if "transit_time" in res:
+                    trips_df.loc[index, f"{mode_type}_time"] = res["transit_time"]
+                    trips_df.loc[index, "total_distance"] = res["distance_m"]
+                    trips_df.loc[index, "distance_miles"] = res["distance_m"] / 1000 * KM_TO_MILES
+                else:
+                    trips_df.loc[index, f"{mode_type}_time"] = None
+                    trips_df.loc[index, "total_distance"] = None
+                    trips_df.loc[index, "distance_miles"] = None
+
+    return trips_df
+
+
+def get_travel_time_dict(mode_type, trips_dict):
+    results = process_rows_drive(mode_type, trips_dict)
+    result_dict = {}
+    for res in results:
+        if "transit_time" in res:
+            result_dict[f"{mode_type}_time"] = res["transit_time"]
+            result_dict["total_distance"] = res["distance_m"]
+            result_dict["distance_miles"] = res["distance_m"] / 1000 * KM_TO_MILES
+        else:
+            result_dict[f"{mode_type}_time"] = None
+            result_dict["total_distance"] = None
+            result_dict["distance_miles"] = None
+
+    return result_dict
+
+
+def get_census_data(api_key, api_url, table_name, state_fips, county_fips, block_groups):
+    url = api_url
+
+    params = {
+        "get": f"NAME,group({table_name})",
+        # "for": f"county:{county_fips}",
+        # "in": f"state:{state_fips}",
+        "for": f"block group:{block_groups}",
+        "in": f"state:{state_fips} county:{county_fips}",
+        "key": api_key,
+    }
+
+    response = requests.get(url, params=params)
+    # print(response.url)
+
+    if response.status_code == 200:
+        data = response.json()
+        df = pd.DataFrame(data[1:], columns=data[0])
+        return df
+    else:
+        print("Failed to retrieve data:", response.status_code)
+
+
+def get_census_depart_time(
+    table="B08302",
+    api_url="https://api.census.gov/data/2022/acs/acs5",
+    state_fips="47",
+    county_fips="065",
+    block_groups="*",
+):
+    # tables = 'B08134'
+    # table = "B08302"
+    # api_url = "https://api.census.gov/data/2022/acs/acs5"
+
+    # tables = 'P034'
+    # api_url = "https://api.census.gov/data/2000/dec/sf3"
+
+    df = get_census_data(CENSUS_API_KEY, api_url, table, state_fips, county_fips, block_groups)
+
+    columns_to_be_renamed = {
+        f"{table}_001E": "total_estimate",
+        f"{table}_001M": "total_margin",
+        f"{table}_002E": "12am_to_4:59am_estimate",
+        f"{table}_002M": "12am_to_4:59am_margin",
+        f"{table}_003E": "5am_to_5:29am_estimate",
+        f"{table}_003M": "5am_to_5:29am_margin",
+        f"{table}_004E": "5:30am_to_5:59am_estimate",
+        f"{table}_004M": "5:30am_to_5:59am_margin",
+        f"{table}_005E": "6am_to_6:29am_estimate",
+        f"{table}_005M": "6am_to_6:29am_margin",
+        f"{table}_006E": "6:30am_to_6:59am_estimate",
+        f"{table}_006M": "6:30am_to_6:59am_margin",
+        f"{table}_007E": "7am_to_7:29am_estimate",
+        f"{table}_007M": "7am_to_7:29am_margin",
+        f"{table}_008E": "7:30am_to_7:59am_estimate",
+        f"{table}_008M": "7:30am_to_7:59am_margin",
+        f"{table}_009E": "8am_to_8:29am_estimate",
+        f"{table}_009M": "8am_to_8:29am_margin",
+        f"{table}_010E": "8:30am_to_8:59am_estimate",
+        f"{table}_010M": "8:30am_to_8:59am_margin",
+        f"{table}_011E": "9am_to_9:59am_estimate",
+        f"{table}_011M": "9am_to_9:59am_margin",
+        f"{table}_012E": "10am_to_10:59am_estimate",
+        f"{table}_012M": "10am_to_10:59am_margin",
+        f"{table}_013E": "11am_to_11:59am_estimate",
+        f"{table}_013M": "11am_to_11:59am_margin",
+        f"{table}_014E": "12pm_to_3:59pm_estimate",
+        f"{table}_014M": "12pm_to_3:59pm_margin",
+        f"{table}_015E": "4pm_to_11:59pm_estimate",
+        f"{table}_015M": "4pm_to_11:59pm_margin",
+    }
+
+    df_renamed = df[list(columns_to_be_renamed.keys()) + ["GEO_ID", "state", "county", "tract", "block group"]].rename(
+        columns_to_be_renamed, axis=1
+    )
+    df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1].lstrip("0"))
+    df_renamed["total_estimate"] = df_renamed["total_estimate"].astype(int)
+
+    for column in df_renamed.columns:
+        if "estimate" in column or "margin" in column:
+            df_renamed[column] = df_renamed[column].astype("Int64")
+
+    return df_renamed
