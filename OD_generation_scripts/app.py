@@ -17,6 +17,7 @@ from utils import (
     download_lodes,
     download_shapefile,
     download_ms_buildings,
+    get_travel_time,
 )
 import union_lodes_sg
 
@@ -219,7 +220,9 @@ if begin:
             if os.path.exists(f"{output_path}/county_lodes.csv") and os.path.exists(f"{output_path}/county_cbg.csv"):
                 st.success("LODES filtered data already present")
             else:
-                lodes_read = lodes_read.LodesGen(county_fips, county_lodes_paths, county_cbg, output_path, logger, od_option)
+                lodes_read = lodes_read.LodesGen(
+                    county_fips, county_lodes_paths, county_cbg, output_path, logger, od_option
+                )
                 lodes_read.generate()
                 st.success("LODES data filtered")
 
@@ -286,7 +289,17 @@ if begin:
                     datetime_ranges,
                     logger,
                 )
-                lodes_combs.main(county_cbg, res_build, com_build, ms_build, county_lodes, sample_size)
+                lodes_combs.main(
+                    county_cbg,
+                    res_build,
+                    com_build,
+                    ms_build,
+                    county_lodes,
+                    sample_size,
+                    state_fips,
+                    county_fips,
+                    block_groups="*",
+                )
                 st.success("Custom OD generated (LODES)")
             if "Safegraph" in choice:
                 sg_combs = sg_combs.SgCombs(

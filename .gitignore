@@ -84,3 +84,5 @@ accessibility_estimation/outputs2/income_tn.geojson
 config.py
 !data/uscounties.zip
 !data/.gitignore
+move_OD.zip
+data.zip
