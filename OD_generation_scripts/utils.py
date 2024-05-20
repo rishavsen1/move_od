@@ -20,6 +20,7 @@ from dask import delayed, compute
 from tqdm.auto import tqdm
 import dask.dataframe as dd
 import concurrent.futures
+import time
 
 # from config import CENSUS_API_KEY
 
@@ -319,14 +320,23 @@ def run_script(script_path, logger):
 
 
 def traveltimeDrive(row):
-    latStart, lonStart, latDest, lonDest, time, mode_type = (
+    # latStart, lonStart, latDest, lonDest, time, mode_type = (
+    #     row["origin_loc_lat"],
+    #     row["origin_loc_lon"],
+    #     row["dest_loc_lat"],
+    #     row["dest_loc_lon"],
+    #     str(row["departure_time_str"]),
+    #     row["mode_type"],
+    # )
+    latStart, lonStart, latDest, lonDest, mode_type = (
         row["origin_loc_lat"],
         row["origin_loc_lon"],
         row["dest_loc_lat"],
         row["dest_loc_lon"],
-        str(row["pickup_time_str"]),
+        # str(row["departure_time_str"]),
         row["mode_type"],
     )
+    time = "00:00:00"
     modes = {"drive": "CAR", "transit": "WALK,TRANSIT", "walk": "WALK"}
     mode = modes[mode_type]
     request_url = f"http://localhost:8080/otp/routers/default/plan?fromPlace={latStart},{lonStart}&toPlace={latDest},{lonDest}&mode={mode}&date=01-26-2024&time={time}&maxWalkDistance=100000"
@@ -364,18 +374,19 @@ def process_rows_drive(mode_type, dataframe):
     data_list = dataframe
     if not isinstance(dataframe, dict):
         data_list = dataframe.to_dict("records")
-        for data in data_list:
-            data.update({"mode_type": mode_type})
-        delayed_tasks = [delayed(traveltimeDrive)(data) for data in data_list]
+        # for data in data_list:
+        data_list.update({"mode_type": mode_type})
+        # delayed_tasks = [delayed(traveltimeDrive)(data) for data in data_list]
 
-        results = []
-        for result in tqdm(compute(*delayed_tasks, scheduler="threads"), total=len(data_list)):
-            results.append(result)
+        # results = []
+        # for result in tqdm(compute(*delayed_tasks, scheduler="threads"), total=len(data_list)):
+        # results.append(result)
+        result = [traveltimeDrive(data_list)]
     else:
         data_list.update({"mode_type": mode_type})
-        results = [traveltimeDrive(data_list)]
+        result = [traveltimeDrive(data_list)]
 
-    return results
+    return result
 
 
 def get_travel_time(mode_type, trips_df):
@@ -437,6 +448,7 @@ def get_census_data(api_key, api_url, table_name, state_fips, county_fips, block
         }
 
     response = requests.get(url, params=params)
+    print(response.url)
 
     if response.status_code == 200:
         data = response.json()
@@ -447,12 +459,12 @@ def get_census_data(api_key, api_url, table_name, state_fips, county_fips, block
 
 
 def get_census_data_wrapper(
-    table="B08302",
-    api_url="https://api.census.gov/data/2022/acs/acs5",
-    state_fips="47",
-    county_fips="065",
-    block_groups="*",
-    county_only=False,
+    table,
+    api_url,
+    state_fips,
+    county_fips,
+    block_groups,
+    county_only,
 ):
     # tables = 'B08134'
     # table = "B08302"
@@ -496,9 +508,11 @@ def get_census_data_wrapper(
         f"{table}_015M": "4pm_to_11:59pm_margin",
     }
 
-    df_renamed = df[list(columns_to_be_renamed.keys()) + ["GEO_ID", "state", "county", "tract", "block group"]].rename(
-        columns_to_be_renamed, axis=1
-    )
+    other_cols = ["GEO_ID", "state", "county", "tract", "block group"]
+    if county_only:
+        other_cols = ["GEO_ID", "state", "county"]
+
+    df_renamed = df[list(columns_to_be_renamed.keys()) + other_cols].rename(columns_to_be_renamed, axis=1)
     df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1].lstrip("0"))
     df_renamed["total_estimate"] = df_renamed["total_estimate"].astype(int)
 
@@ -573,7 +587,7 @@ def time_to_datetime(time_str):
 
 
 def parse_time_range(time_str):
-    base_date = datetime.datetime.now().date
+    base_date = datetime.datetime.now().date()
     time_range = time_str.replace("_estimate", "").split("_to_")
     start_time_str, end_time_str = time_range[0], time_range[1]
 
@@ -695,24 +709,26 @@ def parse_speed_limit(speed_str):
     return None
 
 
-def fetch_inrix_speed(osm_way_id, heading, direction, timestamp, inrix_data):
+def preprocess_inrix_data(inrix_data):
+    inrix_dict = {}
+    for idx, row in inrix_data.iterrows():
+        key = (row["OSMWayIDs"], row["bearing"], row["measurement_tstamp"])
+        inrix_dict[key] = (row["speed"], row["historical_average_speed"])
+    return inrix_dict
+
+
+def fetch_inrix_speed(osm_way_id, heading, direction, timestamp, inrix_dict):
     if not isinstance(osm_way_id, list):
         osm_way_id = [osm_way_id]  # Ensure osm_way_id is a list
-    # Filter the INRIX data for the given OSM way ID and timestamp
 
-    inrix_segment = inrix_data[
-        (inrix_data["OSMWayIDs"].isin(osm_way_id))
-        & (inrix_data["measurement_tstamp"] == timestamp)
-        & (inrix_data["bearing"] == direction)
-    ]
+    # Iterate through all osm_way_ids to find the matching data
+    for way_id in osm_way_id:
+        key = (way_id, direction, timestamp)
+        if key in inrix_dict:
+            inrix_segment = inrix_dict[key]
+            return inrix_segment["speed"], inrix_segment["historical_average_speed"]
 
-    if not inrix_segment.empty:
-        return (
-            inrix_segment.iloc[0]["speed"],
-            inrix_segment.iloc[0]["historical_average_speed"],
-        )  # Speed in mph or kph
-    else:
-        return None, None  # Handle missing data
+    return None, None  # Handle missing data
 
 
 def convert_speed_to_mps(speed, unit="mph"):
@@ -793,10 +809,11 @@ def calculate_shortest_path_with_speeds(
     destination_lat,
     destination_lon,
     timestamp,
-    inrix_data,
+    inrix_dict,
     average_speed_mps,
     average_speed_historical_mps,
 ):
+    start_time = time.time()
     origin_node = get_nearest_node(graph, origin_lat, origin_lon)
     destination_node = get_nearest_node(graph, destination_lat, destination_lon)
     if origin_node is None or destination_node is None:
@@ -807,14 +824,24 @@ def calculate_shortest_path_with_speeds(
     travel_time_inrix = None
     total_distance = None
     travel_time_historical = None
+    total_time_taken = 0
     try:
+        path_start_time = time.time()
         shortest_path = nx.shortest_path(graph, origin_node, destination_node, weight="length")
+        path_end_time = time.time()
+        print(f"Time to calculate shortest path: {path_end_time - path_start_time:.8f} seconds")
+
+        total_time_taken += path_end_time - path_start_time
         travel_time_osm = 0
         travel_time_inrix = 0
         travel_time_historical = 0
         total_distance = 0
         for u, v in zip(shortest_path[:-1], shortest_path[1:]):
+            edge_data_start_time = time.time()
             edge_data = graph.get_edge_data(u, v)
+            edge_data_end_time = time.time()
+            print(f"Time to get edge data for ({u}, {v}): {edge_data_end_time - edge_data_start_time:.8f} seconds")
+            total_time_taken += edge_data_end_time - edge_data_start_time
             if not edge_data:
                 print(f"Missing edge data for edge ({u}, {v})")
                 continue
@@ -825,13 +852,24 @@ def calculate_shortest_path_with_speeds(
             osm_way_id = edge_data.get("osmid", None)
             u_lat, u_lon = graph.nodes[u]["y"], graph.nodes[u]["x"]
             v_lat, v_lon = graph.nodes[v]["y"], graph.nodes[v]["x"]
+
+            heading_start_time = time.time()
             heading = calculate_heading(u_lat, u_lon, v_lat, v_lon)
             direction = heading_to_direction(heading)
+            heading_end_time = time.time()
+            print(f"Time to calculate heading and direction: {heading_end_time - heading_start_time:.8f} seconds")
+
+            total_time_taken += heading_end_time - heading_start_time
+
             if osm_way_id is not None:
-                # Fetch INRIX speed
+                fetch_speed_start_time = time.time()
                 speed_inrix, speed_inrix_historical = fetch_inrix_speed(
-                    osm_way_id, heading, direction, timestamp, inrix_data
+                    osm_way_id, heading, direction, timestamp, inrix_dict
                 )
+                fetch_speed_end_time = time.time()
+                print(f"Time to fetch INRIX speed: {fetch_speed_end_time - fetch_speed_start_time:.8f} seconds")
+                total_time_taken += fetch_speed_end_time - fetch_speed_start_time
+
                 if speed_inrix is not None:
                     speed_inrix_mps = convert_speed_to_mps(speed_inrix, "mph")
                     speed_inrix_historical = convert_speed_to_mps(speed_inrix_historical, "mph")
@@ -841,10 +879,11 @@ def calculate_shortest_path_with_speeds(
             else:
                 speed_inrix_mps = average_speed_mps
                 speed_inrix_historical = average_speed_historical_mps
+
             travel_time_inrix += length / speed_inrix_mps
             travel_time_historical += length / speed_inrix_historical
 
-            # # Use OSM maxspeed or default speed for OSM travel time
+            # Uncomment if needed for OSM maxspeed
             # speed_str = edge_data.get("speed_kph", "55 km/h")
             # if isinstance(speed_str, list):  # Handle cases where speed limit is a list
             #     speed_str = speed_str[0]
@@ -852,20 +891,22 @@ def calculate_shortest_path_with_speeds(
             # if speed_osm_mps is None:
             #     speed_osm_mps = 50 * 1000 / 3600  # Default speed if parsing fails, assumed in km/h
             # travel_time_osm += length / speed_osm_mps
+
     except Exception as e:
         print(
             f"Error calculating shortest path from ({origin_lat}, {origin_lon}) to ({destination_lat}, {destination_lon}): {e}"
         )
         return None, None, None, None, None
+
+    end_time = time.time()
+    print(
+        f"Total time for calculate_shortest_path_with_speeds: {end_time - start_time:.8f} seconds, actual :{total_time_taken}s"
+    )
+
     return shortest_path, travel_time_osm, travel_time_inrix, travel_time_historical, total_distance
 
 
-def add_shortest_path_and_speeds(df, graph, timestamp, inrix_data):
-    shortest_paths = []
-    travel_times_osm = []
-    travel_times_inrix = []
-    travel_times_historical = []
-    travel_distances = []
+def get_average_speed_at_timestamp(timestamp, inrix_data):
     average_speed = calculate_average_speed_at_timestamp(timestamp, inrix_data, "speed")
     average_speed_historical = calculate_average_speed_at_timestamp(timestamp, inrix_data, "historical_average_speed")
     if average_speed is not None:
@@ -879,6 +920,16 @@ def add_shortest_path_and_speeds(df, graph, timestamp, inrix_data):
     else:
         average_speed_historical_mps = 55 * 1000 / 3600  # Default speed if average speed is not available
 
+    return average_speed_mps, average_speed_historical_mps
+
+
+def add_shortest_path_and_speeds(df, graph, timestamp, inrix_dict, average_speed_mps, average_speed_historical_mps):
+    shortest_paths = []
+    travel_times_osm = []
+    travel_times_inrix = []
+    travel_times_historical = []
+    travel_distances = []
+
     for index, row in df.iterrows():
         path, time_osm, time_inrix, time_historical, distance = calculate_shortest_path_with_speeds(
             graph,
@@ -887,7 +938,7 @@ def add_shortest_path_and_speeds(df, graph, timestamp, inrix_data):
             row["dest_loc_lat"],
             row["dest_loc_lon"],
             timestamp,
-            inrix_data,
+            inrix_dict,
             average_speed_mps,
             average_speed_historical_mps,
         )
@@ -904,71 +955,56 @@ def add_shortest_path_and_speeds(df, graph, timestamp, inrix_data):
     return df
 
 
-def add_shortest_path_and_speeds_process(df, graph, timestamp, inrix_data, average_speed_mps):
-    shortest_paths = []
-    travel_times_osm = []
-    travel_times_inrix = []
-    travel_times_historical = []
-    travel_distances = []
-    # average_speed = calculate_average_speed_at_timestamp(timestamp, inrix_data)
-    # if average_speed is not None:
-    #     average_speed_mps = convert_speed_to_mps(average_speed, "mph")  # Assuming speed is in mph, change if necessary
-    # else:
-    #     average_speed_mps = 50 * 1000 / 3600  # Default speed if average speed is not available
+def format_probabilities(probabilities):
 
-    for index, row in df.iterrows():
-        path, time_osm, time_inrix, time_historical, distance = calculate_shortest_path_with_speeds(
-            graph,
-            row["origin_loc_lat"],
-            row["origin_loc_lon"],
-            row["dest_loc_lat"],
-            row["dest_loc_lon"],
-            timestamp,
-            inrix_data,
-            average_speed_mps,
-        )
-        shortest_paths.append(path)
-        travel_times_osm.append(time_osm)
-        travel_times_inrix.append(time_inrix)
-        travel_times_historical.append(time_historical)
-        travel_distances.append(distance)
-    df["shortest_path"] = shortest_paths
-    # df["travel_time_osm_secs"] = travel_times_osm
-    df["travel_time_inrix_secs"] = travel_times_inrix
-    df["travel_time_historical_secs"] = travel_times_historical
-    df["travel_distance_m"] = travel_distances
-    return df
+    probabilities = np.nan_to_num(probabilities, nan=0.0001)
+    # probabilities = pd.to_numeric(trip_distribution, errors="coerce").fillna(0).values
+    # probabilities /= probabilities.sum() if probabilities.sum() != 0 else 1
+
+    indices = np.arange(len(probabilities))
+    nan_positions = probabilities == 0.0001
+
+    for idx in indices[(nan_positions) & (indices >= 3) & (indices < len(probabilities))]:
+        if idx <= 9:
+            probabilities[idx] = 0.01
+
+    probabilities = np.array(probabilities, dtype=float)  # Convert to float to avoid type issues
+    probabilities = np.nan_to_num(probabilities, nan=0.0001, posinf=0.0001, neginf=0.0001)
+    probabilities /= probabilities.sum() if probabilities.sum() != 0 else len(probabilities)
+
+    return probabilities
 
 
-def add_shortest_path_and_speeds_threaded(df: pd.DataFrame, graph, timestamp, inrix_data) -> pd.DataFrame:
-    # df = convert_path_str_to_list(df, "shortest_path")
-    average_speed = calculate_average_speed_at_timestamp(timestamp, inrix_data)
-    if average_speed is not None:
-        average_speed_mps = convert_speed_to_mps(average_speed, "mph")  # Assuming speed is in mph, change if necessary
-    else:
-        average_speed_mps = 50 * 1000 / 3600  # Default speed if average speed is not available
+def preprocessing_probabilites(subset_df):
 
-    # Split the DataFrame into 8 parts
-    num_partitions = 8
-    df_split = np.array_split(df, num_partitions)
+    time_columns = [col for col in subset_df.columns if "estimate" in col and "total" not in col]
+    total = subset_df["total_estimate"].sum()
 
-    results = []
+    distribution = subset_df[time_columns].sum() / total
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_partitions) as executor:
-        futures = {
-            executor.submit(
-                add_shortest_path_and_speeds_process, partition, graph, timestamp, inrix_data, average_speed_mps
-            ): i
-            for i, partition in enumerate(df_split)
-        }
-        for future in concurrent.futures.as_completed(futures):
-            partition_index = futures[future]
-            try:
-                result = future.result()
-                results.append(result)
-            except Exception as exc:
-                print(f"Partition {partition_index} generated an exception: {exc}")
+    times = distribution.index.tolist()
 
-    # Combine the results back into a single DataFrame
-    df_combined = pd.concat(results)
-    return df_combined
+    probabilities = distribution.values
+    probabilities = format_probabilities(probabilities)
+
+    return probabilities, times
+
+
+def define_time_blocks(time_descriptions):
+    # Convert time descriptions to seconds
+    time_blocks = []
+    for description in time_descriptions:
+        if description.startswith("under"):
+            max_minutes = int(description.split("_")[1])
+            time_blocks.append((0, max_minutes * 60 - 1))
+        elif description.endswith("and_over_estimate"):
+            min_minutes = int(description.split("_")[0])
+            time_blocks.append((min_minutes * 60, float("inf")))
+        else:
+            min_minutes, max_minutes = (
+                int(description.split("_to_")[0]),
+                int(description.split("_to_")[1].split("_")[0]),
+            )
+            time_blocks.append((min_minutes * 60, max_minutes * 60 - 1))
+
+    return time_blocks

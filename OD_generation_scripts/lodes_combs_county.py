@@ -4,7 +4,6 @@
 import pandas as pd
 import geopandas as gpd
 import numpy as np
-import math
 import random
 from shapely.geometry import Point
 from collections import defaultdict
@@ -18,7 +17,6 @@ from utils import (
     get_census_travel_time_data,
     parse_time_range,
     preprocessing_probabilites,
-    define_time_blocks,
 )
 
 
@@ -182,6 +180,12 @@ class LodesComb:
             res_build,
             com_build,
             ms_build,
+            datetime_ranges,
+            depart_time_probabilities,
+            travel_time_county_probabilities,
+            times,
+            travel_time_probabilities,
+            time_blocks,
         ) = params
 
         od_data = []
@@ -223,18 +227,18 @@ class LodesComb:
             sampled_com = sampled_com.sample(frac=1, random_state=42).reset_index(drop=True)
 
             for i in range(movement["total_jobs"]):
-                # # if np.isnan(probabilities).any():
-                # #     print(probabilities)
-                # departure_time = np.random.choice(times, p=depart_time_probabilities)
+                # if np.isnan(probabilities).any():
+                #     print(probabilities)
+                departure_time = np.random.choice(times, p=depart_time_probabilities)
 
-                # start_datetime, end_datetime = parse_time_range(departure_time)
+                start_datetime, end_datetime = parse_time_range(departure_time)
 
-                # delta = int((end_datetime - start_datetime).total_seconds())
-                # random_second = random.randint(0, delta)
-                # final_departure_time = start_datetime + timedelta(seconds=random_second)
-                # seconds_from_midnight = start_datetime.hour * 3600 + start_datetime.minute * 60 + random_second
+                delta = int((end_datetime - start_datetime).total_seconds())
+                random_second = random.randint(0, delta)
+                final_departure_time = start_datetime + timedelta(seconds=random_second)
+                seconds_from_midnight = start_datetime.hour * 3600 + start_datetime.minute * 60 + random_second
 
-                # # Create the movement record
+                # Create the movement record
                 od_record = {
                     "h_geocode": movement["h_geocode"],
                     "w_geocode": movement["w_geocode"],
@@ -264,98 +268,7 @@ class LodesComb:
 
         # Convert the list of dictionaries to a GeoDataFrame
         od_frame = gpd.GeoDataFrame(od_data)
-        return od_frame
-
-    def od_assign_time(
-        self,
-        od_df,
-        departure_counts,
-        start_datetime,
-        end_datetime,
-        total_travel_time_to_work,
-        total_travel_time_to_work_proportion,
-        travel_time_block_probabilities,
-        time_blocks,
-    ):
-        od_time_blocks = define_time_blocks(time_blocks)
-        travel_time_block_probabilities = np.array(travel_time_block_probabilities)
-        travel_time_block_probabilities /= travel_time_block_probabilities.sum()
-
-        bins = [block[0] for block in od_time_blocks] + [np.inf]
-
-        counts, _ = np.histogram(od_df["time_taken"], bins=bins)
-
-        bin_probabilities = np.array(travel_time_block_probabilities)
-        bin_probabilities *= counts
-        bin_probabilities /= bin_probabilities.sum()
-
-        od_df["bin_index"] = np.digitize(od_df["time_taken"], bins=bins[:-1], right=True) - 1
-        od_df["sample_probability"] = od_df["bin_index"].apply(lambda x: bin_probabilities[x])
-
-        expected_sum_travel_time = total_travel_time_to_work * total_travel_time_to_work_proportion
-        threshold = 0.3 * expected_sum_travel_time
-
-        selected_od_indices = []
-        current_sum_travel_time = 0
-        od_df = od_df.reset_index().drop("index", axis=1)
-        available_od_df = od_df.copy()
-
-        while len(selected_od_indices) < min(departure_counts, len(available_od_df)):
-            remaining_departures = departure_counts - len(selected_od_indices)
-            required_average_remaining = (expected_sum_travel_time - current_sum_travel_time) / remaining_departures
-
-            if available_od_df.empty or available_od_df["sample_probability"].sum() == 0:
-                available_od_df["sample_probability"] = 1
-
-            available_od_df["sample_probability"] /= available_od_df["sample_probability"].sum()
-
-            if (
-                current_sum_travel_time > threshold
-                or len(selected_od_indices) > 0.5 * departure_counts
-                or (required_average_remaining * remaining_departures) < current_sum_travel_time
-            ):
-                if required_average_remaining < 0:
-                    inverse_weights = 1 / available_od_df["time_taken"]
-                    if inverse_weights.sum() == 0:
-                        inverse_weights.fillna(0.001, inplace=True)
-                    available_od_df["adjusted_probability"] = available_od_df["sample_probability"] * inverse_weights
-                else:
-                    adjustment_factor = (required_average_remaining / available_od_df["time_taken"]).clip(0, 2)
-                    available_od_df["adjusted_probability"] = available_od_df["sample_probability"] * adjustment_factor
-            else:
-                available_od_df["adjusted_probability"] = available_od_df["sample_probability"]
-
-            available_od_df["adjusted_probability"] /= available_od_df["adjusted_probability"].sum()
-            sampled_index = available_od_df.sample(weights="adjusted_probability", random_state=42).index[0]
-            selected_od_indices.append(sampled_index)
-
-            current_sum_travel_time += available_od_df.loc[sampled_index, "time_taken"] / 60  # seconds to minutes
-            available_od_df = available_od_df.drop(sampled_index)
-
-        selected_od_df = od_df.loc[selected_od_indices]
-        remaining_od_df = od_df.drop(selected_od_indices)
-
-        selected_od_df["departure_time"] = selected_od_df.apply(
-            lambda row: start_datetime
-            + timedelta(seconds=random.randint(0, int((end_datetime - start_datetime).total_seconds()))),
-            axis=1,
-        )
-        selected_od_df["departure_time_secs"] = selected_od_df["departure_time"].apply(
-            lambda dt: dt.hour * 3600 + dt.minute * 60 + dt.second
-        )
-        selected_od_df["departure_time_str"] = selected_od_df["departure_time"].apply(
-            lambda dt: dt.strftime("%H:%M:%S")
-        )
-
-        # delta = int((end_datetime - start_datetime).total_seconds())
-        # random_second = random.randint(0, delta)
-        # final_departure_time = start_datetime + timedelta(seconds=random_second)
-        # seconds_from_midnight = start_datetime.hour * 3600 + start_datetime.minute * 60 + random_second
-        # "departure_time": final_departure_time,
-        # "departure_time_secs": seconds_from_midnight,
-        # "departure_time_str": final_departure_time.strftime("%H:%M:%S"),
-
-        return selected_od_df, remaining_od_df
+        return (day, od_frame)
 
     def main(
         self,
@@ -397,22 +310,21 @@ class LodesComb:
             block_groups=block_groups,
             county_only=False,
         )
-        # if sample_size < county_lodes.shape[0]:
-        #     county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
+        if sample_size < county_lodes.shape[0]:
+            county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
 
         days = sorted(set(day[0].date() for day in self.datetime_ranges))
 
         delayed_tasks = []
-        results = []
-        total_census_departs = census_depart_times_df["total_estimate"].sum()
-        time_columns = [col for col in census_depart_times_df.columns if "estimate" in col and "total" not in col]
-        census_depart_times_current_df = census_depart_times_df[time_columns]
-        departure_times = census_depart_times_current_df.columns.tolist()
-
         for day in days:
             county_h_geocodes = county_cbg["GEOID"].to_list()
-
             for h_geocode in county_h_geocodes:
+                travel_time_to_work_subset_df = travel_time_to_work_df[travel_time_to_work_df["GEO_ID"] == h_geocode]
+                census_depart_times_subset_df = census_depart_times_df[census_depart_times_df["GEO_ID"] == h_geocode]
+
+                travel_time_probabilities, time_blocks = preprocessing_probabilites(travel_time_to_work_subset_df)
+                depart_time_probabilities, times = preprocessing_probabilites(census_depart_times_subset_df)
+                travel_time_county_probabilities, _ = preprocessing_probabilites(travel_time_to_work_by_departure_df)
 
                 delayed_task = delayed(self.od_assign_start_end)(
                     (
@@ -422,49 +334,17 @@ class LodesComb:
                         res_build,
                         com_build,
                         ms_build,
+                        self.datetime_ranges,
+                        depart_time_probabilities,
+                        travel_time_county_probabilities,
+                        times,
+                        travel_time_probabilities,
+                        time_blocks,
                     )
                 )
                 delayed_tasks.append(delayed_task)
 
-            result = compute(*delayed_tasks)
-            result_df = pd.DataFrame()
-            for res in result:
-                result_df = pd.concat([result_df, res])
-
-            assigned_od = pd.DataFrame()
-            original_od_count = result_df.shape[0]
-            for departure_time in departure_times:
-                start_datetime, end_datetime = parse_time_range(departure_time)
-                departure_counts = math.ceil(
-                    (census_depart_times_df[departure_time].sum() / total_census_departs) * original_od_count
-                )
-                # travel_time_to_work_subset_df = travel_time_to_work_df[travel_time_to_work_df["GEO_ID"] == h_geocode]
-                travel_time_block_probabilities, time_blocks = preprocessing_probabilites(travel_time_to_work_df)
-                total_travel_time_to_work = travel_time_to_work_by_departure_df[departure_time].sum()
-                total_travel_time_to_work_proportion = (
-                    total_travel_time_to_work / travel_time_to_work_by_departure_df["total_estimate"].sum()
-                )
-
-                selected_od_df, remaining_od_df = self.od_assign_time(
-                    result_df,
-                    departure_counts,
-                    start_datetime,
-                    end_datetime,
-                    total_travel_time_to_work,
-                    total_travel_time_to_work_proportion,
-                    travel_time_block_probabilities,
-                    time_blocks,
-                )
-
-                result_df = remaining_od_df
-                assigned_od = pd.concat([assigned_od, selected_od_df])
-
-            if len(result_df) > 0:
-                self.logger.warning(f"Warning: Not all ODs were assigned. {len(result_df)} ODs remain unassigned.")
-            if not assigned_od.shape[0] == original_od_count:
-                self.logger.error(f"Error: The number of assigned ODs does not match the original count")
-
-            results.append((day, assigned_od))
+        results = compute(*delayed_tasks)
 
         results_by_day = defaultdict(list)
         for result in results:

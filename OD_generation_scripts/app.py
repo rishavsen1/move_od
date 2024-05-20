@@ -296,7 +296,7 @@ if begin:
                     ms_build,
                     county_lodes,
                     sample_size,
-                    state_fips,
+                    state_fips[state],
                     county_fips,
                     block_groups="*",
                 )
