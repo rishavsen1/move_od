@@ -35,8 +35,9 @@ def set_dates():
 
 
 if "start_date" not in st.session_state or "end_date" not in st.session_state or "state_name" not in st.session_state:
-    st.session_state.start_date = datetime.datetime.now().date()
-    st.session_state.end_date = datetime.datetime.now().date()
+    current_date = datetime.datetime.now()
+    st.session_state.start_date = current_date.replace(year=2024).date()
+    st.session_state.end_date = current_date.replace(year=2024).date()
     st.session_state.state_name = None
 
 os.makedirs("log_files", exist_ok=True)
@@ -69,25 +70,23 @@ set_dates()
 start_date = st.session_state.start_date
 end_date = st.session_state.end_date
 
-timedelta = col2.number_input("Select a value of Timedelta (in seconds)", value=15)
+# times = col3.number_input("Choose number of slots to generate for:", value=1, min_value=0, max_value=10)
+# start_times = []
+# end_times = []
 
-times = col3.number_input("Choose number of slots to generate for:", value=1, min_value=0, max_value=10)
-start_times = []
-end_times = []
+# for time in range(int(times)):
+#     col1, col2 = st.columns(2)
 
-for time in range(int(times)):
-    col1, col2 = st.columns(2)
+#     with col1:
+#         start_times.append(st.time_input(f"Start time for slot {time+1}", datetime.time(6, 00)))
 
-    with col1:
-        start_times.append(st.time_input(f"Start time for slot {time+1}", datetime.time(6, 00)))
+#     with col2:
+#         end_times.append(st.time_input(f"Enter end time for slot {time+1}", datetime.time(11, 00)))
 
-    with col2:
-        end_times.append(st.time_input(f"Enter end time for slot {time+1}", datetime.time(11, 00)))
-
-for s, e in zip(start_times, end_times):
-    if s >= e:
-        st.error("Start time should be greater than end time")
-        break
+# for s, e in zip(start_times, end_times):
+#     if s >= e:
+#         st.error("Start time should be greater than end time")
+#         break
 
 year_range = []
 if start_date.year == end_date.year:
@@ -96,13 +95,14 @@ else:
     for year in range(start_date.year, end_date.year + 1):
         year_range.append(str(year))
 
-
-col1, col2, col3 = st.columns(3)
-
 sg_enabled = False
 lodes_enabled = False
 
-choice = col1.multiselect("Choose type of data to generate for:", ["LODES", "Safegraph"], default=["LODES"])
+inrix_folder_path = "/home/rishav/Programs/move_od/data/INRIX"
+
+inrix_path = col2.text_input("INRIX data path", value=f"{inrix_folder_path}/Hamilton-2021-Inrix-Data.csv")
+
+choice = col3.multiselect("Choose type of data to generate for:", ["LODES", "Safegraph"], default=["LODES"])
 
 if "LODES" in choice:
     lodes_enabled = True
@@ -112,13 +112,18 @@ county_lodes_paths = [
     f"../data/states/{state}/{states[state].lower()}_od_aux_JT00_2021.csv",
 ]
 
-sample_size = col2.number_input("Number of OD samples to generate", value=1000000, min_value=0, max_value=int(1e15))
+col1, col2, col3 = st.columns(3)
 
-
-output_path = col3.text_input(
-    "Output file path",
-    value=f"../move_OD/{county}_{state}_{start_date}_{end_date}",
+translation = col2.text_input("INRIX translation file", value=f"{inrix_path}/USA_Tennessee.zip")
+segments = col1.text_input(
+    "INRIX translation segments file", value=f"{inrix_path}/USA_TN_OSM_20231201_segments_shapefile.zip"
 )
+inrix_segments = col2.text_input("INRIX segments file", value=f"{inrix_path}/XD_Identification.zip")
+
+
+output_path = f"../move_OD/{county}_{state}_{start_date}_{end_date}"
+st.write(f"Output file path: {output_path}")
+
 
 safe_df = []
 
@@ -134,7 +139,8 @@ if "Safegraph" in choice:
             )
         )
 else:
-    sg_enabled = col2.checkbox("Use Safegraph data to get additional POI(workplace) locations?")
+    # sg_enabled = col2.checkbox("Use Safegraph data to get additional POI(workplace) locations?")
+    sg_enabled = False
     if sg_enabled:
         for idx, year in enumerate(year_range):
             safe_df.append(
@@ -155,7 +161,7 @@ od_option = st.radio(
     ),
 )
 
-st.write("You selected:", od_option)
+# st.write("You selected:", od_option)
 
 begin = st.button("Begin process")
 
@@ -176,7 +182,7 @@ if begin:
             lodes_cpu_max = days_count
             sg_cpu_max = cpus - days_count
 
-        datetime_ranges = get_datetime_ranges(start_date, end_date, start_times, end_times, timedelta)
+        datetime_ranges = get_datetime_ranges(start_date, end_date, timedelta=15)
 
         logger = Logger(f"{output_path}/{county}_{state}_{start_date}_{end_date}")
 
@@ -271,7 +277,6 @@ if begin:
                 lodes=lodes_enabled,
                 sg_enabled=sg_enabled,
                 ms_enabled=ms_enabled,
-                sample_size=sample_size,
             )
 
             logger.info(f"Lodes entries: {county_lodes.shape[0]}")
@@ -285,7 +290,6 @@ if begin:
                     county_cbg,
                     output_path,
                     ms_enabled,
-                    timedelta,
                     datetime_ranges,
                     logger,
                 )
@@ -295,26 +299,27 @@ if begin:
                     com_build,
                     ms_build,
                     county_lodes,
-                    sample_size,
+                    state,
+                    county,
                     state_fips[state],
                     county_fips,
                     block_groups="*",
                 )
                 st.success("Custom OD generated (LODES)")
-            if "Safegraph" in choice:
-                sg_combs = sg_combs.SgCombs(
-                    county_cbg,
-                    output_path,
-                    ms_enabled,
-                    timedelta,
-                    start_times,
-                    end_times,
-                    start_date,
-                    end_date,
-                    logger,
-                )
-                sg_combs.main(county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max)
-                st.success("Custom OD generated (Safegraph)")
+            # if "Safegraph" in choice:
+            #     sg_combs = sg_combs.SgCombs(
+            #         county_cbg,
+            #         output_path,
+            #         ms_enabled,
+            #         timedelta,
+            #         start_times,
+            #         end_times,
+            #         start_date,
+            #         end_date,
+            #         logger,
+            #     )
+            #     sg_combs.main(county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max)
+            #     st.success("Custom OD generated (Safegraph)")
 
             if "Safegraph" in choice and "LODES" in choice:
                 days = pd.date_range(start_date, end_date, freq="d").to_list()

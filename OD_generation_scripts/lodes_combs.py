@@ -19,6 +19,10 @@ from utils import (
     parse_time_range,
     preprocessing_probabilites,
     define_time_blocks,
+    get_census_work_time,
+    sample_gaussian_dist,
+    get_OSM_graph,
+    find_shortest_path_dict,
 )
 
 
@@ -28,14 +32,12 @@ class LodesComb:
         county_cbg,
         data_path,
         ms_enabled,
-        timedelta,
         datetime_ranges,
         logger,
     ) -> None:
         self.county_cbg = county_cbg
         self.data_path = data_path
         self.ms_enabled = ms_enabled
-        self.timedelta = timedelta
         self.datetime_ranges = datetime_ranges
         self.logger = logger
         self.logger.info("Initalizing lodes_comb.py")
@@ -79,103 +81,10 @@ class LodesComb:
 
         return county_lodes
 
-    # def generate_OD(self, params):
-    #     day, county_lodes, county_cbg, res_build, com_build, ms_build, datetime_ranges, census_depart_times_df = params
-    #     prob_matrix = pd.DataFrame()
-    #     mode_type = "drive"
-
-    #     specific_list = self.datetime_ranges[0]
-
-    #     temp_data = []  # List to store all temporary data frames
-
-    #     # Pre-filtering based on unique GEOIDs to reduce lookup times
-    #     unique_h_geocodes = county_lodes["h_geocode"].unique()
-    #     unique_w_geocodes = county_lodes["w_geocode"].unique()
-
-    #     res_build_filtered = res_build[res_build["GEOID"].isin(unique_h_geocodes)]
-    #     com_build_filtered = com_build[com_build["GEOID"].isin(unique_w_geocodes)]
-    #     ms_build_filtered = ms_build[ms_build["GEOID"].isin(np.concatenate((unique_h_geocodes, unique_w_geocodes)))]
-    #     county_cbg_filtered = county_cbg[
-    #         county_cbg["GEOID"].isin(np.concatenate((unique_h_geocodes, unique_w_geocodes)))
-    #     ]
-
-    #     # Creating dictionaries for quick look-up
-    #     res_dict = {geo_id: df for geo_id, df in res_build_filtered.groupby("GEOID")}
-    #     com_dict = {geo_id: df for geo_id, df in com_build_filtered.groupby("GEOID")}
-    #     ms_dict = {geo_id: df for geo_id, df in ms_build_filtered.groupby("GEOID")}
-    #     cbg_dict = {geo_id: df for geo_id, df in county_cbg_filtered.groupby("GEOID")}
-
-    #     county_lodes = county_lodes.sort_values("h_geocode")
-
-    #     for index, movement in county_lodes.iterrows():
-    #         res = res_dict.get(movement.h_geocode, pd.DataFrame())
-    #         if res.empty and self.ms_enabled:
-    #             res = ms_dict.get(movement.h_geocode, pd.DataFrame())
-    #         if res.empty:
-    #             res = cbg_dict.get(movement.h_geocode, pd.DataFrame())
-
-    #         com = com_dict.get(movement.w_geocode, pd.DataFrame())
-    #         if com.empty and self.ms_enabled:
-    #             com = ms_dict.get(movement.w_geocode, pd.DataFrame())
-    #         if com.empty:
-    #             com = cbg_dict.get(movement.w_geocode, pd.DataFrame())
-
-    #         num_res = len(res)
-    #         num_com = len(com)
-    #         repeat_res = movement.total_jobs // num_res if num_res else 0
-    #         repeat_com = movement.total_jobs // num_com if num_com else 0
-    #         additional_res = movement.total_jobs % num_res
-    #         additional_com = movement.total_jobs % num_com
-
-    #         sampled_res = pd.concat(
-    #             [res] * repeat_res + [res.sample(n=additional_res, random_state=42)], ignore_index=True
-    #         )
-    #         sampled_com = pd.concat(
-    #             [com] * repeat_com + [com.sample(n=additional_com, random_state=42)], ignore_index=True
-    #         )
-
-    #         sampled_res = sampled_res.sample(frac=1, random_state=42).reset_index(drop=True)
-    #         sampled_com = sampled_com.sample(frac=1, random_state=42).reset_index(drop=True)
-
-    #         for i in range(movement.total_jobs):
-    #             temp_dict = {
-    #                 "h_geocode": movement.h_geocode,
-    #                 "w_geocode": movement.w_geocode,
-    #                 "total_jobs": movement.total_jobs,
-    #                 "origin_loc_lat": sampled_res.iloc[i]["location"][0],
-    #                 "origin_loc_lon": sampled_res.iloc[i]["location"][1],
-    #                 "dest_loc_lat": sampled_com.iloc[i]["location"][0],
-    #                 "dest_loc_lon": sampled_com.iloc[i]["location"][1],
-    #             }
-
-    #             pickup_time = random.choice(specific_list)
-    #             time_part = pickup_time.time()
-    #             seconds_since_midnight = (time_part.hour * 3600) + (time_part.minute * 60) + time_part.second
-    #             temp_dict.update(
-    #                 {
-    #                     "pickup_time": pickup_time.time(),
-    #                     "pickup_time_secs": seconds_since_midnight,
-    #                     "pickup_time_str": pickup_time.time().strftime("%H:%M:%S"),
-    #                 }
-    #             )
-    #             move_time, total_distance, distance_miles = list(get_travel_time_dict(mode_type, temp_dict).values())
-
-    #             temp_dict.update(
-    #                 {
-    #                     "time_taken": move_time,
-    #                     "total_distance": total_distance,
-    #                     "distance_miles": distance_miles,
-    #                 }
-    #             )
-
-    #             temp_data.append(temp_dict)
-
-    #     prob_matrix = gpd.GeoDataFrame(temp_data)
-
-    #     return (day, prob_matrix)
-
     def od_assign_start_end(self, params):
         (
+            G,
+            G_projected,
             day,
             county_lodes,
             county_cbg,
@@ -206,10 +115,10 @@ class LodesComb:
             # Calculate proportions for origin and destination
             num_res = len(res)
             num_com = len(com)
-            repeat_res = movement["total_jobs"] // num_res if num_res else 0
-            repeat_com = movement["total_jobs"] // num_com if num_com else 0
-            additional_res = movement["total_jobs"] % num_res
-            additional_com = movement["total_jobs"] % num_com
+            repeat_res = movement["scaled_total_jobs"] // num_res if num_res else 0
+            repeat_com = movement["scaled_total_jobs"] // num_com if num_com else 0
+            additional_res = movement["scaled_total_jobs"] % num_res
+            additional_com = movement["scaled_total_jobs"] % num_com
 
             # Sample residential and commercial buildings accordingly
             sampled_res = pd.concat(
@@ -222,34 +131,21 @@ class LodesComb:
             sampled_res = sampled_res.sample(frac=1, random_state=42).reset_index(drop=True)
             sampled_com = sampled_com.sample(frac=1, random_state=42).reset_index(drop=True)
 
-            for i in range(movement["total_jobs"]):
-                # # if np.isnan(probabilities).any():
-                # #     print(probabilities)
-                # departure_time = np.random.choice(times, p=depart_time_probabilities)
+            for i in range(movement["scaled_total_jobs"]):
 
-                # start_datetime, end_datetime = parse_time_range(departure_time)
-
-                # delta = int((end_datetime - start_datetime).total_seconds())
-                # random_second = random.randint(0, delta)
-                # final_departure_time = start_datetime + timedelta(seconds=random_second)
-                # seconds_from_midnight = start_datetime.hour * 3600 + start_datetime.minute * 60 + random_second
-
-                # # Create the movement record
                 od_record = {
                     "h_geocode": movement["h_geocode"],
                     "w_geocode": movement["w_geocode"],
-                    "total_jobs": movement["total_jobs"],
+                    "total_jobs": movement["scaled_total_jobs"],
                     "origin_loc": [sampled_res.iloc[i]["location"][0], sampled_res.iloc[i]["location"][1]],
                     "origin_loc_lat": sampled_res.iloc[i]["location"][0],
                     "origin_loc_lon": sampled_res.iloc[i]["location"][1],
                     "dest_loc": [sampled_com.iloc[i]["location"][0], sampled_com.iloc[i]["location"][1]],
                     "dest_loc_lat": sampled_com.iloc[i]["location"][0],
                     "dest_loc_lon": sampled_com.iloc[i]["location"][1],
-                    # "departure_time": final_departure_time,
-                    # "departure_time_secs": seconds_from_midnight,
-                    # "departure_time_str": final_departure_time.strftime("%H:%M:%S"),
                 }
 
+                # shortest_path = find_shortest_path_dict(G, od_record)
                 # moving the time calculation to later - need to assign time based on the combined probabilities
                 move_time, total_distance, distance_miles = list(get_travel_time_dict(mode_type, od_record).values())
                 od_record.update(
@@ -276,6 +172,7 @@ class LodesComb:
         total_travel_time_to_work_proportion,
         travel_time_block_probabilities,
         time_blocks,
+        hours_worked,
     ):
         od_time_blocks = define_time_blocks(time_blocks)
         travel_time_block_probabilities = np.array(travel_time_block_probabilities)
@@ -347,6 +244,13 @@ class LodesComb:
             lambda dt: dt.strftime("%H:%M:%S")
         )
 
+        stay_duration_samples = sample_gaussian_dist(hours_worked, 1)
+        stay_duration_secs = stay_duration_samples[0] * 3600  # Convert hours to seconds
+
+        selected_od_df["return_time"] = selected_od_df.apply(
+            lambda row: row["departure_time"] + timedelta(seconds=row["time_taken"] + stay_duration_secs), axis=1
+        )
+
         # delta = int((end_datetime - start_datetime).total_seconds())
         # random_second = random.randint(0, delta)
         # final_departure_time = start_datetime + timedelta(seconds=random_second)
@@ -364,7 +268,8 @@ class LodesComb:
         com_build,
         ms_build,
         county_lodes,
-        sample_size,
+        state,
+        county,
         state_fips,
         county_fips,
         block_groups,
@@ -375,7 +280,7 @@ class LodesComb:
         random.seed(42)
         census_depart_times_df = get_census_data_wrapper(
             table="B08302",
-            api_url="https://api.census.gov/data/2022/acs/acs5",
+            api_url="https://api.census.gov/data/2021/acs/acs5",
             state_fips=state_fips,
             county_fips=county_fips,
             block_groups=block_groups,
@@ -383,7 +288,15 @@ class LodesComb:
         )
         travel_time_to_work_by_departure_df = get_census_data_wrapper(
             table="B08133",
-            api_url="https://api.census.gov/data/2022/acs/acs1",
+            api_url="https://api.census.gov/data/2021/acs/acs1",
+            state_fips=state_fips,
+            county_fips=county_fips,
+            block_groups=block_groups,
+            county_only=True,
+        )
+        hours_worked = get_census_work_time(
+            table="B23020",
+            api_url="https://api.census.gov/data/2021/acs/acs1",
             state_fips=state_fips,
             county_fips=county_fips,
             block_groups=block_groups,
@@ -391,16 +304,19 @@ class LodesComb:
         )
         travel_time_to_work_df = get_census_travel_time_data(
             table="B08303",
-            api_url="https://api.census.gov/data/2022/acs/acs5",
+            api_url="https://api.census.gov/data/2021/acs/acs5",
             state_fips=state_fips,
             county_fips=county_fips,
             block_groups=block_groups,
             county_only=False,
         )
+        census_depart_times_df.to_csv("census_depart_times.csv")
         # if sample_size < county_lodes.shape[0]:
         #     county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
 
-        days = sorted(set(day[0].date() for day in self.datetime_ranges))
+        G, G_projected = get_OSM_graph(county, state)
+
+        days = sorted(set(day for day in self.datetime_ranges))
 
         delayed_tasks = []
         results = []
@@ -409,6 +325,27 @@ class LodesComb:
         census_depart_times_current_df = census_depart_times_df[time_columns]
         departure_times = census_depart_times_current_df.columns.tolist()
 
+        current_totals = county_lodes.groupby("h_geocode")["total_jobs"].sum().reset_index()
+        current_totals = current_totals.rename(columns={"total_jobs": "current_total_jobs"})
+
+        b08302_totals = census_depart_times_df.groupby("GEO_ID")["total_estimate"].sum().reset_index()
+        b08302_totals = b08302_totals.rename(
+            columns={"GEO_ID": "h_geocode", "total_estimate": "b08302_total_estimate"}
+        )
+
+        merged_lodes_acs_df = pd.merge(current_totals, b08302_totals, on="h_geocode", how="inner")
+        merged_lodes_acs_df["scaling_factor"] = (
+            merged_lodes_acs_df["b08302_total_estimate"] / merged_lodes_acs_df["current_total_jobs"]
+        )
+        county_lodes = pd.merge(
+            county_lodes, merged_lodes_acs_df[["h_geocode", "scaling_factor"]], on="h_geocode", how="left"
+        )
+        county_lodes["scaled_total_jobs"] = (
+            (county_lodes["total_jobs"] * county_lodes["scaling_factor"]).round().astype(int)
+        )
+
+        # create dict of average_speeds for each timestamp, pass to od_assign_start_end
+
         for day in days:
             county_h_geocodes = county_cbg["GEOID"].to_list()
 
@@ -416,6 +353,8 @@ class LodesComb:
 
                 delayed_task = delayed(self.od_assign_start_end)(
                     (
+                        G,
+                        G_projected,
                         day,
                         county_lodes[county_lodes["h_geocode"] == h_geocode],
                         county_cbg,
@@ -433,8 +372,9 @@ class LodesComb:
 
             assigned_od = pd.DataFrame()
             original_od_count = result_df.shape[0]
+            result_df = result_df.dropna(subset=["time_taken"])
             for departure_time in departure_times:
-                start_datetime, end_datetime = parse_time_range(departure_time)
+                start_datetime, end_datetime = parse_time_range(day, departure_time)
                 departure_counts = math.ceil(
                     (census_depart_times_df[departure_time].sum() / total_census_departs) * original_od_count
                 )
@@ -442,7 +382,7 @@ class LodesComb:
                 travel_time_block_probabilities, time_blocks = preprocessing_probabilites(travel_time_to_work_df)
                 total_travel_time_to_work = travel_time_to_work_by_departure_df[departure_time].sum()
                 total_travel_time_to_work_proportion = (
-                    total_travel_time_to_work / travel_time_to_work_by_departure_df["total_estimate"].sum()
+                    result_df["time_taken"].sum() / travel_time_to_work_by_departure_df["total_estimate"].sum()
                 )
 
                 selected_od_df, remaining_od_df = self.od_assign_time(
@@ -454,6 +394,7 @@ class LodesComb:
                     total_travel_time_to_work_proportion,
                     travel_time_block_probabilities,
                     time_blocks,
+                    hours_worked,
                 )
 
                 result_df = remaining_od_df

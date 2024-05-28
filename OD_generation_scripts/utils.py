@@ -19,12 +19,28 @@ from multiprocessing import cpu_count, Pool
 from dask import delayed, compute
 from tqdm.auto import tqdm
 import dask.dataframe as dd
-import concurrent.futures
-import time
+import hashlib
+import os
 
-# from config import CENSUS_API_KEY
+from config import CENSUS_API_KEY
 
 KM_TO_MILES = 0.621371
+
+
+# Function to create a unique hash for the current inrix_path
+def generate_hash_for_path(path):
+    return hashlib.md5(path.encode()).hexdigest()
+
+
+def save_graph(graph, path):
+    nx.write_graphml(graph, path)
+    print(f"Graph saved to {path}")
+
+
+def load_graph(path):
+    graph = nx.read_graphml(path)
+    print(f"Graph loaded from {path}")
+    return graph
 
 
 def intpt_func(row):
@@ -86,24 +102,25 @@ def combine_date_time(date, time):
     return datetime.datetime.combine(date, time)
 
 
-def get_datetime_ranges(start_date, end_date, start_times, end_times, timedelta):
+def get_datetime_ranges(start_date, end_date, timedelta):
     # Creating the list of lists of datetime objects
     datetime_ranges = []
     current_date = start_date
     while current_date <= end_date:
-        for start_time, end_time in zip(start_times, end_times):
-            start_datetime = combine_date_time(current_date, start_time)
-            end_datetime = combine_date_time(current_date, end_time)
+        # for start_time, end_time in zip(start_times, end_times):
+        #     start_datetime = combine_date_time(current_date, start_time)
+        #     end_datetime = combine_date_time(current_date, end_time)
 
-            # Adjust if end_datetime is before start_datetime (crossing midnight)
-            if end_datetime < start_datetime:
-                end_datetime += datetime.timedelta(days=1)
+        #     # Adjust if end_datetime is before start_datetime (crossing midnight)
+        #     if end_datetime < start_datetime:
+        #         end_datetime += datetime.timedelta(days=1)
 
-            datetime_range = [
-                start_datetime + datetime.timedelta(seconds=x * timedelta)
-                for x in range(0, int((end_datetime - start_datetime).total_seconds() / timedelta))
-            ]
-            datetime_ranges.append(datetime_range)
+        # datetime_range = [
+        #     start_datetime + datetime.timedelta(seconds=x * timedelta)
+        #     for x in range(0, int((end_datetime - start_datetime).total_seconds() / timedelta))
+        # ]
+        datetime_range = current_date
+        datetime_ranges.append(datetime_range)
         current_date = current_date + datetime.timedelta(days=1)
 
     return datetime_ranges
@@ -157,7 +174,7 @@ def get_fips_codes(state_abbreviation, county_name):
         return state_fips[0], None
 
 
-def read_data(output_path, lodes=False, sg_enabled=False, ms_enabled=False, sample_size=np.inf):
+def read_data(output_path, lodes=False, sg_enabled=False, ms_enabled=False):
     print("Reading data")
     # loading geometry data
     county_cbg = pd.read_csv(f"{output_path}/county_cbg.csv")
@@ -518,7 +535,38 @@ def get_census_data_wrapper(
 
     for column in df_renamed.columns:
         if "estimate" in column or "margin" in column:
-            df_renamed[column] = df_renamed[column].astype("Int64")
+            df_renamed[column] = df_renamed[column].astype("int")
+
+    return df_renamed
+
+
+def get_census_work_time(
+    table,
+    api_url,
+    state_fips,
+    county_fips,
+    block_groups,
+    county_only,
+):
+
+    df = get_census_data(CENSUS_API_KEY, api_url, table, state_fips, county_fips, block_groups, county_only)
+
+    columns_to_be_renamed = {
+        f"{table}_001E": "total_estimate",
+        f"{table}_001M": "total_margin",
+    }
+
+    other_cols = ["GEO_ID", "state", "county", "tract", "block group"]
+    if county_only:
+        other_cols = ["GEO_ID", "state", "county"]
+
+    df_renamed = df[list(columns_to_be_renamed.keys()) + other_cols].rename(columns_to_be_renamed, axis=1)
+    df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1].lstrip("0"))
+    df_renamed["total_estimate"] = df_renamed["total_estimate"].astype(float)
+
+    for column in df_renamed.columns:
+        if "estimate" in column or "margin" in column:
+            df_renamed[column] = df_renamed[column].astype(float)
 
     return df_renamed
 
@@ -577,7 +625,7 @@ def get_census_travel_time_data(
 
     for column in df_renamed.columns:
         if "estimate" in column or "margin" in column:
-            df_renamed[column] = df_renamed[column].astype("Int64")
+            df_renamed[column] = df_renamed[column].astype("int")
 
     return df_renamed
 
@@ -586,8 +634,8 @@ def time_to_datetime(time_str):
     return datetime.datetime.strptime(time_str, "%I:%M %p")
 
 
-def parse_time_range(time_str):
-    base_date = datetime.datetime.now().date()
+def parse_time_range(day, time_str):
+    base_date = day
     time_range = time_str.replace("_estimate", "").split("_to_")
     start_time_str, end_time_str = time_range[0], time_range[1]
 
@@ -802,46 +850,68 @@ def add_shortest_path_time_and_distance_columns(df, graph):
     return df
 
 
+def find_shortest_path(G, row):
+    orig_lat, orig_lon = row["origin_loc_lat"], row["origin_loc_lon"]
+    dest_lat, dest_lon = row["dest_loc_lat"], row["dest_loc_lon"]
+
+    orig_node = ox.distance.nearest_nodes(G, orig_lon, orig_lat)
+    dest_node = ox.distance.nearest_nodes(G, dest_lon, dest_lat)
+
+    try:
+        shortest_path = nx.shortest_path(G, orig_node, dest_node, weight="length")
+    except nx.NetworkXNoPath:
+        shortest_path = []  # or use None or any other sentinel value
+    return shortest_path
+
+
+def find_shortest_path_dict(G, dict):
+    orig_lat, orig_lon = dict["origin_loc_lat"], dict["origin_loc_lon"]
+    dest_lat, dest_lon = dict["dest_loc_lat"], dict["dest_loc_lon"]
+
+    orig_node = ox.distance.nearest_nodes(G, orig_lon, orig_lat)
+    dest_node = ox.distance.nearest_nodes(G, dest_lon, dest_lat)
+
+    try:
+        shortest_path = nx.shortest_path(G, orig_node, dest_node, weight="length")
+    except nx.NetworkXNoPath:
+        shortest_path = []  # or use None or any other sentinel value
+    return shortest_path
+
+
 def calculate_shortest_path_with_speeds(
     graph,
     origin_lat,
     origin_lon,
     destination_lat,
     destination_lon,
+    shortest_path,
     timestamp,
     inrix_dict,
     average_speed_mps,
     average_speed_historical_mps,
 ):
-    start_time = time.time()
-    origin_node = get_nearest_node(graph, origin_lat, origin_lon)
-    destination_node = get_nearest_node(graph, destination_lat, destination_lon)
-    if origin_node is None or destination_node is None:
+    # start_time = time.time()
+
+    if shortest_path == []:
         return None, None, None, None, None
 
-    shortest_path = None
     travel_time_osm = None
     travel_time_inrix = None
     total_distance = None
     travel_time_historical = None
-    total_time_taken = 0
+    # total_time_taken = 0
     try:
-        path_start_time = time.time()
-        shortest_path = nx.shortest_path(graph, origin_node, destination_node, weight="length")
-        path_end_time = time.time()
-        print(f"Time to calculate shortest path: {path_end_time - path_start_time:.8f} seconds")
 
-        total_time_taken += path_end_time - path_start_time
         travel_time_osm = 0
         travel_time_inrix = 0
         travel_time_historical = 0
         total_distance = 0
         for u, v in zip(shortest_path[:-1], shortest_path[1:]):
-            edge_data_start_time = time.time()
+            # edge_data_start_time = time.time()
             edge_data = graph.get_edge_data(u, v)
-            edge_data_end_time = time.time()
-            print(f"Time to get edge data for ({u}, {v}): {edge_data_end_time - edge_data_start_time:.8f} seconds")
-            total_time_taken += edge_data_end_time - edge_data_start_time
+            # edge_data_end_time = time.time()
+            # print(f"Time to get edge data for ({u}, {v}): {edge_data_end_time - edge_data_start_time:.8f} seconds")
+            # total_time_taken += edge_data_end_time - edge_data_start_time
             if not edge_data:
                 print(f"Missing edge data for edge ({u}, {v})")
                 continue
@@ -853,22 +923,22 @@ def calculate_shortest_path_with_speeds(
             u_lat, u_lon = graph.nodes[u]["y"], graph.nodes[u]["x"]
             v_lat, v_lon = graph.nodes[v]["y"], graph.nodes[v]["x"]
 
-            heading_start_time = time.time()
+            # heading_start_time = time.time()
             heading = calculate_heading(u_lat, u_lon, v_lat, v_lon)
             direction = heading_to_direction(heading)
-            heading_end_time = time.time()
-            print(f"Time to calculate heading and direction: {heading_end_time - heading_start_time:.8f} seconds")
+            # heading_end_time = time.time()
+            # print(f"Time to calculate heading and direction: {heading_end_time - heading_start_time:.8f} seconds")
 
-            total_time_taken += heading_end_time - heading_start_time
+            # total_time_taken += heading_end_time - heading_start_time
 
             if osm_way_id is not None:
-                fetch_speed_start_time = time.time()
+                # fetch_speed_start_time = time.time()
                 speed_inrix, speed_inrix_historical = fetch_inrix_speed(
                     osm_way_id, heading, direction, timestamp, inrix_dict
                 )
-                fetch_speed_end_time = time.time()
-                print(f"Time to fetch INRIX speed: {fetch_speed_end_time - fetch_speed_start_time:.8f} seconds")
-                total_time_taken += fetch_speed_end_time - fetch_speed_start_time
+                # fetch_speed_end_time = time.time()
+                # print(f"Time to fetch INRIX speed: {fetch_speed_end_time - fetch_speed_start_time:.8f} seconds")
+                # total_time_taken += fetch_speed_end_time - fetch_speed_start_time
 
                 if speed_inrix is not None:
                     speed_inrix_mps = convert_speed_to_mps(speed_inrix, "mph")
@@ -898,10 +968,10 @@ def calculate_shortest_path_with_speeds(
         )
         return None, None, None, None, None
 
-    end_time = time.time()
-    print(
-        f"Total time for calculate_shortest_path_with_speeds: {end_time - start_time:.8f} seconds, actual :{total_time_taken}s"
-    )
+    # end_time = time.time()
+    # print(
+    #     f"Total time for calculate_shortest_path_with_speeds: {end_time - start_time:.8f} seconds, actual :{total_time_taken}s"
+    # )
 
     return shortest_path, travel_time_osm, travel_time_inrix, travel_time_historical, total_distance
 
@@ -937,6 +1007,7 @@ def add_shortest_path_and_speeds(df, graph, timestamp, inrix_dict, average_speed
             row["origin_loc_lon"],
             row["dest_loc_lat"],
             row["dest_loc_lon"],
+            row["shortest_path"],
             timestamp,
             inrix_dict,
             average_speed_mps,
@@ -947,12 +1018,32 @@ def add_shortest_path_and_speeds(df, graph, timestamp, inrix_dict, average_speed
         travel_times_inrix.append(time_inrix)
         travel_times_historical.append(time_historical)
         travel_distances.append(distance)
-    df["shortest_path"] = shortest_paths
     # df["travel_time_osm_secs"] = travel_times_osm
     df["travel_time_inrix_secs"] = travel_times_inrix
     df["travel_time_historical_secs"] = travel_times_historical
     df["travel_distance_m"] = travel_distances
+    df["inrix_to_historical_speeds"] = travel_times_historical / travel_times_inrix  # higher means more congestion
+
     return df
+
+
+def add_shortest_path_and_speeds_parallel(
+    df, graph, timestamp, inrix_dict, average_speed_mps, average_speed_historical_mps
+):
+    num_partitions = int(cpu_count() / 8)
+    df_split = np.array_split(df, num_partitions)
+
+    with Pool(processes=num_partitions) as pool:
+        results = pool.starmap(
+            add_shortest_path_and_speeds,
+            [
+                (chunk, graph, timestamp, inrix_dict, average_speed_mps, average_speed_historical_mps)
+                for chunk in df_split
+            ],
+        )
+
+    df_combined = pd.concat(results, ignore_index=True)
+    return df_combined
 
 
 def format_probabilities(probabilities):
@@ -1008,3 +1099,196 @@ def define_time_blocks(time_descriptions):
             time_blocks.append((min_minutes * 60, max_minutes * 60 - 1))
 
     return time_blocks
+
+
+def stratified_subsampling(df):
+
+    # Combine origin, destination, and departure_time to create strata
+    df["strata"] = df["origin"] + "-" + df["destination"] + "-" + df["departure_time"]
+
+    # Get unique strata and their counts
+    strata_counts = df["strata"].value_counts()
+
+    # Define sample size (e.g., 50% of the original data)
+    sample_size = int(len(df) * 0.5)
+
+    # Perform stratified sampling
+    sub_sample = df.groupby("strata", group_keys=False).apply(lambda x: x.sample(frac=0.5))
+
+    # Reset index of the sub-sample
+    sub_sample.reset_index(drop=True, inplace=True)
+
+
+def sample_gaussian_dist(df, num_samples):
+    mean = df["total_estimate"].iloc[0]
+    margin_of_error = df["total_margin"].iloc[0]
+    z_score = 1.645  # For 90% confidence interval
+    standard_deviation = margin_of_error / z_score
+    samples = np.random.normal(mean, standard_deviation, num_samples)
+    return samples / 5  # from weekly to daily
+
+
+def to_closest_monday(timestamp_str):
+    # Convert the string timestamp to a datetime object
+    timestamp = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+
+    # Calculate the difference to the closest Monday
+    # weekday() returns 0 for Monday and 6 for Sunday
+    days_to_monday = (timestamp.weekday() - 0) % 7
+    if days_to_monday > 3:  # If the difference is more than 3 days, move to the previous Monday
+        days_to_monday -= 7
+
+    # Adjust the date to the closest Monday
+    closest_monday = timestamp - datetime.timedelta(days=days_to_monday)
+
+    return closest_monday
+
+
+def get_OSM_graph(county, state):
+    place_name = f"{county} County, {state}, USA"
+    network_type = "drive"
+    graph = ox.graph_from_place(place_name, network_type=network_type)
+
+    G = ox.graph_from_place(place_name, network_type=network_type)
+    G_projected = ox.project_graph(G)
+    return G, G_projected
+
+
+def get_departure_times():
+
+    table = "B08301"  # Replace with your actual table code
+    columns_to_be_renamed = {
+        f"{table}_001E": "total_estimate",
+        f"{table}_001M": "total_margin",
+        f"{table}_002E": "12am_to_4:59am_estimate",
+        f"{table}_002M": "12am_to_4:59am_margin",
+        f"{table}_003E": "5am_to_5:29am_estimate",
+        f"{table}_003M": "5am_to_5:29am_margin",
+        f"{table}_004E": "5:30am_to_5:59am_estimate",
+        f"{table}_004M": "5:30am_to_5:59am_margin",
+        f"{table}_005E": "6am_to_6:29am_estimate",
+        f"{table}_005M": "6am_to_6:29am_margin",
+        f"{table}_006E": "6:30am_to_6:59am_estimate",
+        f"{table}_006M": "6:30am_to_6:59am_margin",
+        f"{table}_007E": "7am_to_7:29am_estimate",
+        f"{table}_007M": "7am_to_7:29am_margin",
+        f"{table}_008E": "7:30am_to_7:59am_estimate",
+        f"{table}_008M": "7:30am_to_7:59am_margin",
+        f"{table}_009E": "8am_to_8:29am_estimate",
+        f"{table}_009M": "8am_to_8:29am_margin",
+        f"{table}_010E": "8:30am_to_8:59am_estimate",
+        f"{table}_010M": "8:30am_to_8:59am_margin",
+        f"{table}_011E": "9am_to_9:59am_estimate",
+        f"{table}_011M": "9am_to_9:59am_margin",
+        f"{table}_012E": "10am_to_10:59am_estimate",
+        f"{table}_012M": "10am_to_10:59am_margin",
+        f"{table}_013E": "11am_to_11:59am_estimate",
+        f"{table}_013M": "11am_to_11:59am_margin",
+        f"{table}_014E": "12pm_to_3:59pm_estimate",
+        f"{table}_014M": "12pm_to_3:59pm_margin",
+        f"{table}_015E": "4pm_to_11:59pm_estimate",
+        f"{table}_015M": "4pm_to_11:59pm_margin",
+    }
+
+    base_date = "2021-01-04"  # Change this base date as needed
+    time_columns = [col for col in columns_to_be_renamed.values() if "estimate" in col and "total" not in col]
+
+    departure_times = []
+    for col in time_columns:
+        time_range = col.split("_to_")[0].replace("_estimate", "")
+        if ":" in time_range:
+            hour_min = time_range.split("am")[0] if "am" in time_range else time_range.split("pm")[0]
+            start_hour, start_min = map(int, hour_min.split(":"))
+        else:
+            hour_min = time_range.split("am")[0] if "am" in time_range else time_range.split("pm")[0]
+            start_hour = int(hour_min)
+            start_min = 0
+        if "pm" in time_range and start_hour != 12:
+            start_hour += 12
+        if "am" in time_range and start_hour == 12:
+            start_hour = 0
+        departure_time = f"{start_hour:02d}:{start_min:02d}:00"
+        # departure_time = f"{base_date} {start_hour:02d}:{start_min:02d}:00"
+        departure_times.append(departure_time)
+
+    departure_times = pd.to_datetime(departure_times)
+    next_day_midnight = (departure_times[-1] + pd.Timedelta(days=1)).normalize()
+    departure_times = departure_times.append(pd.DatetimeIndex([next_day_midnight]))
+    departure_times = [pd.to_datetime(time).time() for time in departure_times]
+    return departure_times
+
+
+def filter_inrix(G_projected, state, county, inrix_path, segments, translation, inrix_segments):
+
+    use_cols = ["xd_id", "measurement_tstamp", "speed", "historical_average_speed"]
+    chunk_iter = pd.read_csv(f"{inrix_path}/Hamilton-2021-Inrix-Data.csv", chunksize=100000, usecols=use_cols)
+    inrix = pd.DataFrame()
+    for chunk in chunk_iter:
+        inrix = pd.concat([inrix, chunk])
+        # break
+        # count += 1
+
+    inrix["measurement_tstamp"] = pd.to_datetime(inrix["measurement_tstamp"])
+    inrix["xd_id"] = inrix["xd_id"].astype(int)
+
+    inrix.set_index("measurement_tstamp", inplace=True)
+    hourly_inrix = (
+        inrix.groupby("xd_id", as_index=False).resample("30T").mean().reset_index().drop(["level_0"], axis=1)
+    )
+    inrix.reset_index(inplace=True)
+    hourly_inrix = hourly_inrix.dropna(subset=["speed"])
+    hourly_inrix["xd_id"] = hourly_inrix["xd_id"].astype(int)
+
+    departure_times = get_departure_times()
+    hourly_inrix["measurement_tstamp"] = pd.to_datetime(hourly_inrix["measurement_tstamp"])
+    hourly_inrix["time"] = hourly_inrix["measurement_tstamp"].dt.time
+    filtered_inrix = hourly_inrix[hourly_inrix["time"].isin(departure_times)]
+    filtered_inrix["xd_id"] = filtered_inrix["xd_id"].astype(int)
+    filtered_inrix.to_csv(f"{inrix_path}/filtered_datetime_inrix.csv")
+
+    inrix = filtered_inrix
+    inrix["xd_id"] = inrix["xd_id"].astype(str)
+    segments = gpd.read_file(f"{inrix_path}/USA_TN_OSM_20231201_segments_shapefile.zip")
+    translation = gpd.read_file(f"{inrix_path}/USA_Tennessee.csv")
+    translation = (
+        translation.set_index(
+            [
+                "XDSegID",
+                "WayStartOffset_m",
+                "WayEndOffset_m",
+                "WayStartOffset_percent",
+                "WayEndOffset_percent",
+                "geometry",
+            ]
+        )
+        .apply(lambda x: x.str.split(";").explode())
+        .reset_index()
+    )
+
+    translation["OSMWayIDs"] = translation["OSMWayIDs"].astype(str)
+    translation["OSMWayDirections"] = translation["OSMWayDirections"].astype(str)
+    # ox.save_graphml(G_projected, 'hamilton_county_osm.graphml')
+
+    inrix_segments = gpd.read_file(f"{inrix_path}/XD_Identification.csv")
+    translated_segments = translation.drop(["geometry"], axis=1).merge(
+        segments, left_on="OSMWayIDs", right_on="sseg_id"
+    )
+    inrix_seg_osm = inrix_segments[
+        ["xd", "bearing", "start_latitude", "start_longitude", "end_latitude", "end_longitude"]
+    ].merge(translated_segments, left_on=["xd"], right_on=["XDSegID"])[
+        [
+            "xd",
+            "bearing",
+            "start_latitude",
+            "start_longitude",
+            "end_latitude",
+            "end_longitude",
+            "OSMWayIDs",
+            "OSMWayDirections",
+        ]
+    ]
+
+    inrix_merged_with_osm = inrix.merge(inrix_seg_osm, left_on="xd_id", right_on="xd")
+    inrix_dict = preprocess_inrix_data(inrix_merged_with_osm)
+
+    return inrix_dict
