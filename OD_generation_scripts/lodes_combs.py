@@ -274,10 +274,13 @@ class LodesComb:
         county_fips,
         block_groups,
     ):
+        #make this common
         county_lodes = self.read_county_lodes(county_lodes, county_cbg)
 
         np.random.seed(42)
         random.seed(42)
+        
+        #make this common
         census_depart_times_df = get_census_data_wrapper(
             table="B08302",
             api_url="https://api.census.gov/data/2021/acs/acs5",
@@ -314,7 +317,7 @@ class LodesComb:
         # if sample_size < county_lodes.shape[0]:
         #     county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
 
-        G, G_projected = get_OSM_graph(county, state)
+        # G, G_projected = get_OSM_graph(county, state)
 
         days = sorted(set(day for day in self.datetime_ranges))
 
@@ -353,8 +356,10 @@ class LodesComb:
 
                 delayed_task = delayed(self.od_assign_start_end)(
                     (
-                        G,
-                        G_projected,
+                        # G,
+                        # G_projected,
+                        None,
+                        None,
                         day,
                         county_lodes[county_lodes["h_geocode"] == h_geocode],
                         county_cbg,

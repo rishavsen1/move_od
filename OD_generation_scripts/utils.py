@@ -247,11 +247,9 @@ def get_states_and_counties():
     return states, state_fips, state_to_county, state_to_county_fips
 
 
-def download_shapefile(logger, state, state_fips, year):
-    url = f"https://www2.census.gov/geo/tiger/TIGER2023/BG/tl_{year}_{state_fips}_bg.zip"
+def download_shapefile(logger, state, state_fips, year, url, compressed_path):
     response = requests.get(url, stream=True)
     if response.status_code == 200:
-        compressed_path = f"../data/states/{state}/tl_{year}_{state_fips}_bg.zip"
         os.makedirs(os.path.dirname(compressed_path), exist_ok=True)
         with open(compressed_path, "wb") as f:
             f.write(response.content)
