@@ -6,6 +6,7 @@ import geopandas as gpd
 import numpy as np
 import math
 import random
+import os
 from shapely.geometry import Point
 from collections import defaultdict
 from dask import delayed, compute
@@ -23,6 +24,7 @@ from utils import (
     sample_gaussian_dist,
     get_OSM_graph,
     find_shortest_path_dict,
+    get_travel_time_osmnx,
 )
 
 
@@ -84,7 +86,6 @@ class LodesComb:
     def od_assign_start_end(self, params):
         (
             G,
-            G_projected,
             day,
             county_lodes,
             county_cbg,
@@ -147,7 +148,8 @@ class LodesComb:
 
                 # shortest_path = find_shortest_path_dict(G, od_record)
                 # moving the time calculation to later - need to assign time based on the combined probabilities
-                move_time, total_distance, distance_miles = list(get_travel_time_dict(mode_type, od_record).values())
+                # move_time, total_distance, distance_miles = list(get_travel_time_dict(mode_type, od_record).values())
+                move_time, total_distance, distance_miles = get_travel_time_osmnx(G, od_record)
                 od_record.update(
                     {
                         "time_taken": move_time,
@@ -274,55 +276,104 @@ class LodesComb:
         county_fips,
         block_groups,
     ):
-        #make this common
-        county_lodes = self.read_county_lodes(county_lodes, county_cbg)
 
         np.random.seed(42)
         random.seed(42)
-        
-        #make this common
-        census_depart_times_df = get_census_data_wrapper(
-            table="B08302",
-            api_url="https://api.census.gov/data/2021/acs/acs5",
-            state_fips=state_fips,
-            county_fips=county_fips,
-            block_groups=block_groups,
-            county_only=False,
-        )
-        travel_time_to_work_by_departure_df = get_census_data_wrapper(
-            table="B08133",
-            api_url="https://api.census.gov/data/2021/acs/acs1",
-            state_fips=state_fips,
-            county_fips=county_fips,
-            block_groups=block_groups,
-            county_only=True,
-        )
-        hours_worked = get_census_work_time(
-            table="B23020",
-            api_url="https://api.census.gov/data/2021/acs/acs1",
-            state_fips=state_fips,
-            county_fips=county_fips,
-            block_groups=block_groups,
-            county_only=True,
-        )
-        travel_time_to_work_df = get_census_travel_time_data(
-            table="B08303",
-            api_url="https://api.census.gov/data/2021/acs/acs5",
-            state_fips=state_fips,
-            county_fips=county_fips,
-            block_groups=block_groups,
-            county_only=False,
-        )
-        census_depart_times_df.to_csv("census_depart_times.csv")
+
+        paths = [
+            "county_lodes",
+            "census_depart_times_df",
+            "travel_time_to_work_by_departure_df",
+            "hours_worked",
+            "travel_time_to_work_df",
+        ]
+        flag = False
+        for path in paths:
+            if os.path.exists(f"temp_path/{path}.csv"):
+                flag = True
+            else:
+                flag = False
+                break
+        # make this common
+
+        if flag:
+            print("Using stored data")
+            census_depart_times_df = pd.read_csv("temp_path/census_depart_times_df.csv")
+            travel_time_to_work_by_departure_df = pd.read_csv("temp_path/travel_time_to_work_by_departure_df.csv")
+            hours_worked = pd.read_csv("temp_path/hours_worked.csv")
+            travel_time_to_work_df = pd.read_csv("temp_path/travel_time_to_work_df.csv")
+
+        else:
+            os.makedirs("temp_path", exist_ok=True)
+            county_lodes = self.read_county_lodes(county_lodes, county_cbg)
+            county_lodes.to_csv("temp_path/county_lodes.csv")
+
+            # make this common
+            census_depart_times_df = get_census_data_wrapper(
+                table="B08302",
+                api_url="https://api.census.gov/data/2021/acs/acs5",
+                state_fips=state_fips,
+                county_fips=county_fips,
+                block_groups=block_groups,
+                county_only=False,
+            )
+            travel_time_to_work_by_departure_df = get_census_data_wrapper(
+                table="B08133",
+                api_url="https://api.census.gov/data/2021/acs/acs1",
+                state_fips=state_fips,
+                county_fips=county_fips,
+                block_groups=block_groups,
+                county_only=True,
+            )
+            hours_worked = get_census_work_time(
+                table="B23020",
+                api_url="https://api.census.gov/data/2021/acs/acs1",
+                state_fips=state_fips,
+                county_fips=county_fips,
+                block_groups=block_groups,
+                county_only=True,
+            )
+            travel_time_to_work_df = get_census_travel_time_data(
+                table="B08303",
+                api_url="https://api.census.gov/data/2021/acs/acs5",
+                state_fips=state_fips,
+                county_fips=county_fips,
+                block_groups=block_groups,
+                county_only=False,
+            )
+            census_depart_times_df.to_csv("temp_path/census_depart_times_df.csv")
+            travel_time_to_work_by_departure_df.to_csv("temp_path/travel_time_to_work_by_departure_df.csv")
+            hours_worked.to_csv("temp_path/hours_worked.csv")
+            travel_time_to_work_df.to_csv("temp_path/travel_time_to_work_df.csv")
         # if sample_size < county_lodes.shape[0]:
         #     county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
 
-        # G, G_projected = get_OSM_graph(county, state)
+        G = get_OSM_graph(county, state)
 
-        days = sorted(set(day for day in self.datetime_ranges))
+        days = list(range(3000))
 
         delayed_tasks = []
         results = []
+
+        ratio_in_v_out = 0.08301510874979247
+        geo_id = census_depart_times_df["GEO_ID"]
+
+        # Apply the ratio and ceiling function to the other columns
+        updated_df = census_depart_times_df.drop(columns=["GEO_ID"]).applymap(lambda x: math.ceil(x * ratio_in_v_out))
+
+        # Re-add the GEO_ID column back to the DataFrame
+        updated_df["GEO_ID"] = geo_id
+
+        # Optionally, reorder the columns to have GEO_ID as the first column
+        census_depart_times_df = updated_df[["GEO_ID"] + [col for col in updated_df.columns if col != "GEO_ID"]]
+
+        census_depart_times_df = census_depart_times_df.fillna(0)
+        census_depart_times_df["GEO_ID"] = census_depart_times_df["GEO_ID"].astype(str)
+
+        census_depart_times_df = census_depart_times_df[
+            census_depart_times_df["GEO_ID"].isin(county_lodes["h_geocode"].unique())
+        ]
+
         total_census_departs = census_depart_times_df["total_estimate"].sum()
         time_columns = [col for col in census_depart_times_df.columns if "estimate" in col and "total" not in col]
         census_depart_times_current_df = census_depart_times_df[time_columns]
@@ -349,17 +400,17 @@ class LodesComb:
 
         # create dict of average_speeds for each timestamp, pass to od_assign_start_end
 
+        results = []
+
         for day in days:
+            result_df = pd.DataFrame()  # Ensure this is re-initialized for each day
+            delayed_tasks = []
             county_h_geocodes = county_cbg["GEOID"].to_list()
 
             for h_geocode in county_h_geocodes:
-
                 delayed_task = delayed(self.od_assign_start_end)(
                     (
-                        # G,
-                        # G_projected,
-                        None,
-                        None,
+                        G,
                         day,
                         county_lodes[county_lodes["h_geocode"] == h_geocode],
                         county_cbg,
@@ -370,20 +421,19 @@ class LodesComb:
                 )
                 delayed_tasks.append(delayed_task)
 
-            result = compute(*delayed_tasks)
-            result_df = pd.DataFrame()
-            for res in result:
+            results_for_day = compute(*delayed_tasks)
+            for res in results_for_day:
                 result_df = pd.concat([result_df, res])
 
-            assigned_od = pd.DataFrame()
+            assigned_od = pd.DataFrame()  # Ensure this is re-initialized for each day
             original_od_count = result_df.shape[0]
             result_df = result_df.dropna(subset=["time_taken"])
+
             for departure_time in departure_times:
                 start_datetime, end_datetime = parse_time_range(day, departure_time)
                 departure_counts = math.ceil(
                     (census_depart_times_df[departure_time].sum() / total_census_departs) * original_od_count
                 )
-                # travel_time_to_work_subset_df = travel_time_to_work_df[travel_time_to_work_df["GEO_ID"] == h_geocode]
                 travel_time_block_probabilities, time_blocks = preprocessing_probabilites(travel_time_to_work_df)
                 total_travel_time_to_work = travel_time_to_work_by_departure_df[departure_time].sum()
                 total_travel_time_to_work_proportion = (
@@ -412,6 +462,7 @@ class LodesComb:
 
             results.append((day, assigned_od))
 
+        # Combine results for each day and save
         results_by_day = defaultdict(list)
         for result in results:
             day, df = result

@@ -49,10 +49,23 @@ class LodesGen:
         cbgs = gpd.read_file(self.county_cbg)[["GEOID", "COUNTYFP", "geometry"]]
         cbgs.GEOID = cbgs.GEOID.astype(str)
         cbgs.GEOID = cbgs.GEOID.str.lstrip("0")
-        
-        cbgs = gpd.read_file(self.county_cbg)[["GEOID", "COUNTYFP", "geometry"]]
-        cbgs.GEOID = cbgs.GEOID.astype(str)
-        cbgs.GEOID = cbgs.GEOID.str.lstrip("0")
+        clifton_cbgs = [
+            "470650101032",
+            "470650102012",
+            "470650023001",
+            "470650024001",
+            "470650024002",
+            "470650024003",
+            "470650024004",
+            "470650026002",
+            "470650026003",
+            "470650025001",
+            "470650025004",
+            "470650025003",
+            "470650025002",
+        ]
+
+        cbgs = cbgs[cbgs["GEOID"].isin(clifton_cbgs)]
 
         if self.od_option == "Origin and Destination in same County":
             cbgs = cbgs[cbgs.COUNTYFP == self.county_fips][["GEOID", "geometry"]]
