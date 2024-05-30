@@ -187,12 +187,15 @@ if begin:
         logger = Logger(f"{output_path}/{county}_{state}_{start_date}_{end_date}")
 
         with st.spinner("Downloading Shapefiles"):
+            year = "2023"
             county_cbg = f"../data/states/{state}/tl_2023_{state_fips[state]}_bg.zip"
             compressed_path = f"../data/states/{state}/tl_{year}_{state_fips}_bg.zip"
             url = f"https://www2.census.gov/geo/tiger/TIGER2023/BG/tl_{year}_{state_fips}_bg.zip"
 
             if not os.path.exists(county_cbg):
-                download_shapefile(logger, state, state_fips=state_fips[state], year="2023", url=url)
+                download_shapefile(
+                    logger, state, state_fips=state_fips[state], year="2023", url=url, compressed_path=compressed_path
+                )
 
         if ms_enabled:
             state_stripped = state.replace(" ", "")

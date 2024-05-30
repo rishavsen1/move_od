@@ -1148,8 +1148,7 @@ def get_OSM_graph(county, state):
     graph = ox.graph_from_place(place_name, network_type=network_type)
 
     G = ox.graph_from_place(place_name, network_type=network_type)
-    G_projected = ox.project_graph(G)
-    return G, G_projected
+    return G
 
 
 def get_departure_times():
@@ -1290,3 +1289,20 @@ def filter_inrix(G_projected, state, county, inrix_path, segments, translation, 
     inrix_dict = preprocess_inrix_data(inrix_merged_with_osm)
 
     return inrix_dict
+
+
+def get_travel_time_osmnx(G, od_record):
+    start_point = (od_record["origin_loc_lat"], od_record["origin_loc_lon"])
+    end_point = (od_record["dest_loc_lat"], od_record["dest_loc_lon"])
+    # Find the nearest nodes to the start and end points
+    orig_node = ox.distance.nearest_nodes(G, start_point[1], start_point[0])
+    dest_node = ox.distance.nearest_nodes(G, end_point[1], end_point[0])
+
+    # Use NetworkX to find the shortest path
+    shortest_path = nx.shortest_path(G, orig_node, dest_node, weight="length")
+    total_distance = sum(ox.utils_graph.get_route_edge_attributes(G, shortest_path, "length"))
+    move_time = total_distance / (50 * 1000 / 60 / 60)  # Assuming an average speed of 50 km/h
+
+    distance_miles = total_distance * 0.000621371  # Convert meters to miles
+
+    return move_time, total_distance, distance_miles
