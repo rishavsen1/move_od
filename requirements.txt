@@ -129,6 +129,7 @@ rfc3986-validator==0.1.1
 rich==13.7.0
 rpds-py==0.13.0
 Rtree==1.1.0
+scikit-learn==1.5.0
 scipy==1.11.3
 Send2Trash==1.8.2
 shapely==2.0.2
@@ -142,6 +143,7 @@ streamlit==1.28.2
 tblib==3.0.0
 tenacity==8.2.3
 terminado==0.18.0
+threadpoolctl==3.5.0
 tinycss2==1.2.1
 toml==0.10.2
 tomli==2.0.1

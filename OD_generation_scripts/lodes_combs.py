@@ -351,6 +351,8 @@ class LodesComb:
         # create dict of average_speeds for each timestamp, pass to od_assign_start_end
 
         for day in days:
+            result_df = pd.DataFrame()  # Ensure this is re-initialized for each day
+            delayed_tasks = []
             county_h_geocodes = county_cbg["GEOID"].to_list()
 
             for h_geocode in county_h_geocodes:
@@ -368,12 +370,11 @@ class LodesComb:
                 )
                 delayed_tasks.append(delayed_task)
 
-            result = compute(*delayed_tasks)
-            result_df = pd.DataFrame()
-            for res in result:
+            results_for_day = compute(*delayed_tasks)
+            for res in results_for_day:
                 result_df = pd.concat([result_df, res])
 
-            assigned_od = pd.DataFrame()
+            assigned_od = pd.DataFrame()  # Ensure this is re-initialized for each day
             original_od_count = result_df.shape[0]
             result_df = result_df.dropna(subset=["time_taken"])
             for departure_time in departure_times:
@@ -381,7 +382,6 @@ class LodesComb:
                 departure_counts = math.ceil(
                     (census_depart_times_df[departure_time].sum() / total_census_departs) * original_od_count
                 )
-                # travel_time_to_work_subset_df = travel_time_to_work_df[travel_time_to_work_df["GEO_ID"] == h_geocode]
                 travel_time_block_probabilities, time_blocks = preprocessing_probabilites(travel_time_to_work_df)
                 total_travel_time_to_work = travel_time_to_work_by_departure_df[departure_time].sum()
                 total_travel_time_to_work_proportion = (
