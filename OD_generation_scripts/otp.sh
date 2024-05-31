@@ -6,7 +6,7 @@ IMAGE_NAME="otp"
 CONTAINER_NAME="otp-carta-container"
 
 # Clone the repository
-# git clone $REPO_URL repo-dir
+git clone $REPO_URL repo-dir
 cd repo-dir
 
 # Build the Docker image

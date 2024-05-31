@@ -147,7 +147,7 @@ class LodesComb:
 
                 # shortest_path = find_shortest_path_dict(G, od_record)
                 # moving the time calculation to later - need to assign time based on the combined probabilities
-                move_time, total_distance, distance_miles = get_travel_time_osmnx(G, od_record)
+                move_time, total_distance, distance_miles = list(get_travel_time_dict(mode_type, od_record).values())
                 od_record.update(
                     {
                         "time_taken": move_time,
@@ -320,7 +320,7 @@ class LodesComb:
         G = get_OSM_graph(county, state)
 
         # days = sorted(set(day for day in self.datetime_ranges))
-        days = list(range(10))
+        days = list(range(4))
 
         delayed_tasks = []
         results = []
@@ -409,6 +409,7 @@ class LodesComb:
                 self.logger.error(f"Error: The number of assigned ODs does not match the original count")
 
             results.append((day, assigned_od))
+            self.logger.info(f"Saved results for day {day}")
 
         results_by_day = defaultdict(list)
         for result in results:
