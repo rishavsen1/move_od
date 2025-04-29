@@ -91,3 +91,8 @@ cuda-repo-ubuntu2204-12-5-local_12.5.0-555.42.02-1_amd64.deb
 cuda-repo-wsl-ubuntu-12-5-local_12.5.0-1_amd64.deb
 OD_generation_scripts_for_subsets
 OD_generation_scripts_block
+cache/
+tennessee-latest.osm.pbf
+traffic_density.png
+osmnx_files/
+

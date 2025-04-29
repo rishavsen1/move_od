@@ -93,3 +93,15 @@ Time distribution of the people moving from Safegaprh data (Chattanooga, TN, USA
 
 ![Safegraph poeple movement going time](plots/ham_sg_go.png)
 ![Safegraph poeple movement return time](plots/ham_sg_return.png)
+
+## Open trip Planner setup
+
+Required to get static travel times for ODs
+( only for Chattanooga, TN)
+
+```
+git clone https://github.com/rishavsen1/otp-carta.git
+docker run -it \
+  --name otp-carta-container \
+  -p 8080:8080 otp-carta java -Xmx3G -jar otp-1.5.0-shaded.jar --build /app/otp --inMemory
+```

@@ -290,10 +290,12 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
 
         os.makedirs(os.path.dirname(compressed_path), exist_ok=True)
         progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
+
+        # Fix: Write the response content properly chunk by chunk
         with open(compressed_path, "wb") as file:
             for data in response.iter_content(block_size):
                 progress_bar.update(len(data))
-                file.write(response.content)
+                file.write(data)  # Write the actual data chunk, not the entire content
         progress_bar.close()
 
         if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
@@ -301,10 +303,14 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
         logger.info(f"File downloaded and saved as: {compressed_path}")
 
         if type == "gzip":
-            with gzip.open(compressed_path, "rb") as f_in:
-                with open(decompressed_path.rstrip("/"), "wb") as f_out:  # Assuming the path adjustment for gzip
-                    shutil.copyfileobj(f_in, f_out)
-            logger.info(f"File decompressed and saved as: {decompressed_path.rstrip('/')}")
+            try:
+                with gzip.open(compressed_path, "rb") as f_in:
+                    with open(decompressed_path.rstrip("/"), "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+                logger.info(f"File decompressed and saved as: {decompressed_path.rstrip('/')}")
+            except gzip.BadGzipFile as e:
+                logger.error(f"Error decompressing file: {e}. The file might not be a valid gzip file.")
+                return False
 
         elif type == "zip":
             with zipfile.ZipFile(compressed_path, "r") as zip_ref:
@@ -313,9 +319,11 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
 
         os.remove(compressed_path)
         logger.info(f"Removed the compressed file: {compressed_path}")
+        return True
 
     else:
         logger.error(f"Failed to download the file: Status code {response.status_code}")
+        return False
 
 
 def run_script(script_path, logger):

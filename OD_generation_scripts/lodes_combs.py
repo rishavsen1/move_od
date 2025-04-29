@@ -5,6 +5,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import math
+import os
 import random
 from shapely.geometry import Point
 from collections import defaultdict
@@ -137,10 +138,12 @@ class LodesComb:
                     "h_geocode": movement["h_geocode"],
                     "w_geocode": movement["w_geocode"],
                     "total_jobs": movement["scaled_total_jobs"],
-                    "origin_loc": [sampled_res.iloc[i]["location"][0], sampled_res.iloc[i]["location"][1]],
+                    "origin_loc": sampled_res.iloc[i][["location"]].values[0],
                     "origin_loc_lat": sampled_res.iloc[i]["location"][0],
                     "origin_loc_lon": sampled_res.iloc[i]["location"][1],
-                    "dest_loc": [sampled_com.iloc[i]["location"][0], sampled_com.iloc[i]["location"][1]],
+                    "dest_loc": sampled_com.iloc[i][["location"]].values[0],
+                    "possible_home_loc": sampled_res["location"].values.tolist(),
+                    "possible_dest_loc": sampled_com["location"].values.tolist(),
                     "dest_loc_lat": sampled_com.iloc[i]["location"][0],
                     "dest_loc_lon": sampled_com.iloc[i]["location"][1],
                 }
@@ -244,12 +247,14 @@ class LodesComb:
             lambda dt: dt.strftime("%H:%M:%S")
         )
 
-        stay_duration_samples = sample_gaussian_dist(hours_worked, 1)
-        stay_duration_secs = stay_duration_samples[0] * 3600  # Convert hours to seconds
+        # TODO: check if we need to add return time
 
-        selected_od_df["return_time"] = selected_od_df.apply(
-            lambda row: row["departure_time"] + timedelta(seconds=row["time_taken"] + stay_duration_secs), axis=1
-        )
+        # stay_duration_samples = sample_gaussian_dist(hours_worked, 1)
+        # stay_duration_secs = stay_duration_samples[0] * 3600  # Convert hours to seconds
+
+        # selected_od_df["return_time"] = selected_od_df.apply(
+        #     lambda row: row["departure_time"] + timedelta(seconds=row["time_taken"] + stay_duration_secs), axis=1
+        # )
 
         # delta = int((end_datetime - start_datetime).total_seconds())
         # random_second = random.randint(0, delta)
@@ -313,14 +318,31 @@ class LodesComb:
             block_groups=block_groups,
             county_only=False,
         )
-        census_depart_times_df.to_csv("census_depart_times.csv")
+        time_arriving_at_work_df = get_census_data_wrapper(
+            table="B08602",
+            api_url="https://api.census.gov/data/2021/acs/acs1",
+            state_fips=state_fips,
+            county_fips=county_fips,
+            block_groups=block_groups,
+            county_only=True,
+        )
+
+        os.makedirs(f"{self.data_path}/census_data", exist_ok=True)
+        census_depart_times_df.to_csv(f"{self.data_path}/census_data/census_depart_times.csv")
+        travel_time_to_work_by_departure_df.to_csv(
+            f"{self.data_path}/census_data/travel_time_to_work_by_departure.csv"
+        )
+        hours_worked.to_csv(f"{self.data_path}/census_data/hours_worked.csv")
+        travel_time_to_work_df.to_csv(f"{self.data_path}/census_data/travel_time_to_work.csv")
+        time_arriving_at_work_df.to_csv(f"{self.data_path}/census_data/time_arriving_at_work.csv")
+
         # if sample_size < county_lodes.shape[0]:
         #     county_lodes = marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
 
         G = get_OSM_graph(county, state)
 
-        # days = sorted(set(day for day in self.datetime_ranges))
-        days = list(range(4))
+        days = sorted(set(day for day in self.datetime_ranges))
+        # days = list(range(1))
 
         delayed_tasks = []
         results = []

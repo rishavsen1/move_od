@@ -76,12 +76,10 @@ class LocationsOSMSG:
             splits = self.split_bbox(miny, maxy, minx, maxx, num_workers)
             func_args = [(s[0], s[1], s[2], s[3], {"building": True}) for s in splits]
 
-            with ThreadPoolExecutor(max_workers=num_workers) as executor:
-                futures = [executor.submit(self.process_section, *args) for args in func_args]
+            with Pool(processes=num_workers) as pool:
+                results = pool.starmap(self.process_section, func_args)
 
-                buildings = [future.result() for future in futures]
-
-                buildings = pd.concat(buildings)
+                buildings = pd.concat(results)
                 buildings.to_file(f"{self.output_path}/county_all_buildings.geojson", driver="GeoJSON")
                 # finding all buildings
                 # tags = {"building": True}

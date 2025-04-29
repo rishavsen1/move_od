@@ -8,16 +8,17 @@
       "module": "streamlit",
       "args": [
         "run",
-        "/home/rishav/Programs/move_od/OD_generation_scripts/app.py",
+        "${workspaceFolder}/OD_generation_scripts/app.py",
         "--server.port",
-        "8511",
+        "8511"
       ],
-      "cwd": "/home/rishav/Programs/move_od/OD_generation_scripts",
+      "cwd": "${workspaceFolder}/OD_generation_scripts",
       "env": {
         "PYTHONUNBUFFERED": "1"
       },
       "console": "integratedTerminal",
-      "justMyCode": true
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.venv/bin/python"
     },
     {
       "name": "Streamlit blocks",
@@ -26,11 +27,11 @@
       "module": "streamlit",
       "args": [
         "run",
-        "/home/rishav/Programs/move_od/OD_generation_scripts_block/app.py",
+        "${workspaceFolder}/OD_generation_scripts_block/app.py",
         "--server.port",
-        "8510",
+        "8510"
       ],
-      "cwd": "/home/rishav/Programs/move_od/OD_generation_scripts_block",
+      "cwd": "${workspaceFolder}/OD_generation_scripts_block",
       "env": {
         "PYTHONUNBUFFERED": "1"
       },
@@ -40,9 +41,9 @@
     {
       "name": "Python",
       "type": "debugpy",
-      "program":"${file}",
+      "program": "${file}",
       "request": "launch",
-      "cwd": "/home/rishav/Programs/move_od/OD_generation_scripts",
+      "cwd": "${workspaceFolder}/OD_generation_scripts",
       "env": {
         "PYTHONUNBUFFERED": "1"
       },
