@@ -8,16 +8,18 @@
       "module": "streamlit",
       "args": [
         "run",
-        "${workspaceFolder}/OD_generation_scripts/app.py",
+        "${workspaceFolder}/app.py",
         "--server.port",
-        "8511"
+        "8510",
+        "--browser.gatherUsageStats",
+        "false"
       ],
-      "cwd": "${workspaceFolder}/OD_generation_scripts",
+      "cwd": "${workspaceFolder}",
       "env": {
         "PYTHONUNBUFFERED": "1"
       },
       "console": "integratedTerminal",
-      "justMyCode": true,
+      "justMyCode": false,
       "python": "${workspaceFolder}/.venv/bin/python"
     },
     {

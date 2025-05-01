@@ -22,7 +22,7 @@ import dask.dataframe as dd
 import hashlib
 import os
 
-from config import CENSUS_API_KEY
+from generate.config import CENSUS_API_KEY
 
 KM_TO_MILES = 0.621371
 
@@ -177,9 +177,9 @@ def get_fips_codes(state_abbreviation, county_name):
 def read_data(output_path, lodes=False, sg_enabled=False, ms_enabled=False):
     print("Reading data")
     # loading geometry data
-    county_cbg = pd.read_csv(f"{output_path}/county_cbg.csv")
-    county_cbg = gpd.GeoDataFrame(county_cbg, geometry=gpd.GeoSeries.from_wkt(county_cbg.geometry))
-    county_cbg.GEOID = county_cbg.GEOID.astype(str)
+    county_geoid = pd.read_csv(f"{output_path}/county_geoid.csv")
+    county_geoid = gpd.GeoDataFrame(county_geoid, geometry=gpd.GeoSeries.from_wkt(county_geoid.geometry))
+    county_geoid.GEOID = county_geoid.GEOID.astype(str)
 
     # loading residential buildings
     res_build = pd.read_csv(
@@ -213,9 +213,9 @@ def read_data(output_path, lodes=False, sg_enabled=False, ms_enabled=False):
 
     if sg_enabled:
         sg = pd.read_csv(f"{output_path}/sg_visits_by_day.csv")
-        sg["home_cbg"] = sg["home_cbg"].astype(str)
-        sg["poi_cbg"] = sg["poi_cbg"].astype(str)
-        # marginal_dist(sg, "home_cbg", "poi_cbg", sample_size)
+        sg["home_geoid"] = sg["home_geoid"].astype(str)
+        sg["poi_geoid"] = sg["poi_geoid"].astype(str)
+        # marginal_dist(sg, "home_geoid", "poi_geoid", sample_size)
 
     if lodes:
         county_lodes = pd.read_csv(
@@ -226,7 +226,7 @@ def read_data(output_path, lodes=False, sg_enabled=False, ms_enabled=False):
         county_lodes["w_geocode"] = county_lodes["w_geocode"].astype(str)
         # marginal_dist(county_lodes, "h_geocode", "w_geocode", sample_size)
 
-    return county_cbg, res_build, com_build, ms_build, county_lodes, sg
+    return county_geoid, res_build, com_build, ms_build, county_lodes, sg
 
 
 # def state_abbreviation_to_full(name):
@@ -239,15 +239,15 @@ def read_data(output_path, lodes=False, sg_enabled=False, ms_enabled=False):
 
 
 def get_states_and_counties():
-    df = pd.read_csv("../data/uscounties.csv", dtype={"county_fips": "str"})
+    df = pd.read_csv("./data/uscounties.csv", dtype={"county_fips": "str"})
     states = df.groupby("state_name").first()["state_id"].to_dict()
-    state_to_county = df.groupby("state_name")["county"].apply(list).to_dict()
+    counties_in_state = df.groupby("state_name")["county"].apply(list).to_dict()
     state_fips = df.groupby("state_name").first()["county_fips"].apply(lambda x: str(x)[:2]).to_dict()
-    state_to_county_fips = df.groupby(["state_name", "county"])["county_fips"].apply(list).to_dict()
-    return states, state_fips, state_to_county, state_to_county_fips
+    county_fips = df.groupby(["state_name", "county"])["county_fips"].apply(list).to_dict()
+    return states, state_fips, counties_in_state, county_fips
 
 
-def download_shapefile(logger, state, state_fips, year, url, compressed_path):
+def download_shapefile(logger, url, compressed_path):
     response = requests.get(url, stream=True)
     if response.status_code == 200:
         os.makedirs(os.path.dirname(compressed_path), exist_ok=True)
@@ -263,21 +263,21 @@ def download_lodes(logger, state, state_abbr, lodes_code, year):
     type = "gzip"
 
     url = f"https://lehd.ces.census.gov/data/lodes/LODES8/{state_abbr}/od/{state_abbr}_od_main_JT0{lodes_code}_{year}.csv.gz"
-    compressed_path = f"../data/states/{state}/{state_abbr}_od_main_JT0{lodes_code}_{year}.csv.gz"
-    decompressed_path = f"../data/states/{state}/{state_abbr}_od_main_JT0{lodes_code}_{year}.csv"
+    compressed_path = f"./data/states/{state}/{state_abbr}_od_main_JT0{lodes_code}_{year}.csv.gz"
+    decompressed_path = f"./data/states/{state}/{state_abbr}_od_main_JT0{lodes_code}_{year}.csv"
     download_and_decompress(type, logger, url, compressed_path, decompressed_path)
 
     url = f"https://lehd.ces.census.gov/data/lodes/LODES8/{state_abbr}/od/{state_abbr}_od_aux_JT0{lodes_code}_{year}.csv.gz"
-    compressed_path = f"../data/states/{state}/{state_abbr}_od_aux_JT0{lodes_code}_{year}.csv.gz"
-    decompressed_path = f"../data/states/{state}/{state_abbr}_od_aux_JT0{lodes_code}_{year}.csv"
+    compressed_path = f"./data/states/{state}/{state_abbr}_od_aux_JT0{lodes_code}_{year}.csv.gz"
+    decompressed_path = f"./data/states/{state}/{state_abbr}_od_aux_JT0{lodes_code}_{year}.csv"
     download_and_decompress(type, logger, url, compressed_path, decompressed_path)
 
 
 def download_ms_buildings(logger, state, state_stripped):
     type = "zip"
     url = f"https://usbuildingdata.blob.core.windows.net/usbuildings-v2/{state_stripped}.geojson.zip"
-    compressed_path = f"../data/states/{state}/{state_stripped}.geojson.zip"
-    decompressed_path = f"../data/states/{state}/"  # Path to the directory to extract files
+    compressed_path = f"./data/states/{state}/{state_stripped}.geojson.zip"
+    decompressed_path = f"./data/states/{state}/"  # Path to the directory to extract files
     download_and_decompress(type, logger, url, compressed_path, decompressed_path)
 
 
@@ -1152,13 +1152,13 @@ def to_closest_monday(timestamp_str):
     return closest_monday
 
 
-def get_OSM_graph(county, state):
-    place_name = f"{county} County, {state}, USA"
-    network_type = "drive"
-    graph = ox.graph_from_place(place_name, network_type=network_type)
+# def get_OSM_graph(county, state):
+#     place_name = f"{county} County, {state}, USA"
+#     network_type = "drive"
+#     graph = ox.graph_from_place(place_name, network_type=network_type)
 
-    G = ox.graph_from_place(place_name, network_type=network_type)
-    return G
+#     G = ox.graph_from_place(place_name, network_type=network_type)
+#     return G
 
 
 def get_departure_times():

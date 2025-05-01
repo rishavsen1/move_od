@@ -6,8 +6,8 @@ import networkx as nx
 
 
 # Load INRIX speed data and conversion data
-inrix_df = pd.read_csv("../data/Hamilton-County-INRIX.csv")
-conversion_df = pd.read_csv("../data/XD_Identification.csv")
+inrix_df = pd.read_csv("./data/Hamilton-County-INRIX.csv")
+conversion_df = pd.read_csv("./data/XD_Identification.csv")
 
 desired_date = pd.Timestamp("2025-03-10 01:00:00").date()
 inrix_df["measurement_tstamp"] = pd.to_datetime(inrix_df["measurement_tstamp"])
@@ -101,9 +101,9 @@ for od in od_pairs:
     dep_time = od["departure_time"]
     origin_lat, origin_lon = od["origin"]
     dest_lat, dest_lon = od["destination"]
-    
+
     # Find closest hour
-    hour_to_use = dep_time.floor('H')
+    hour_to_use = dep_time.floor("H")
     G_hour = hourly_graphs.get(hour_to_use)
     if G_hour is None:
         print(f"No graph for hour {hour_to_use}, skipping...")
@@ -118,16 +118,18 @@ for od in od_pairs:
         route = nx.shortest_path(G_hour, source=orig_node, target=dest_node, weight="weight")
         # Sum travel time
         total_travel_time_sec = sum(G_hour[u][v][0].get("weight", 0) for u, v in zip(route[:-1], route[1:]))
-        arrival_time = dep_time + pd.to_timedelta(total_travel_time_sec, unit='s')
+        arrival_time = dep_time + pd.to_timedelta(total_travel_time_sec, unit="s")
 
-        routing_results.append({
-            "departure_time": dep_time,
-            "arrival_time": arrival_time,
-            "travel_time_min": total_travel_time_sec / 60,
-            "route_nodes": route
-        })
+        routing_results.append(
+            {
+                "departure_time": dep_time,
+                "arrival_time": arrival_time,
+                "travel_time_min": total_travel_time_sec / 60,
+                "route_nodes": route,
+            }
+        )
 
         print(f"OD routed at {dep_time}, travel time: {total_travel_time_sec / 60:.2f} min, arrival: {arrival_time}")
-    
+
     except nx.NetworkXNoPath:
         print(f"No route found for OD at {dep_time}")

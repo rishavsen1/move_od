@@ -11,8 +11,8 @@ def union(path, date, sg_enabled):
     lodes = pd.read_csv(f"{path}/lodes_combs/lodes_{date}.csv")
     lodes = lodes.rename(
         columns={
-            "h_geocode": "origin_cbg",
-            "w_geocode": "dest_cbg",
+            "h_geocode": "origin_geoid",
+            "w_geocode": "dest_geoid",
             "total_jobs": "visits",
             "time_0": "go_time",
             "time_0_str": "go_time_str",
@@ -23,13 +23,13 @@ def union(path, date, sg_enabled):
         }
     )
 
-    lodes["origin_cbg"] = lodes["origin_cbg"].astype(str)
-    # lodes = lodes.merge(chatta[["GEOID"]], left_on="origin_cbg", right_on="GEOID")
+    lodes["origin_geoid"] = lodes["origin_geoid"].astype(str)
+    # lodes = lodes.merge(chatta[["GEOID"]], left_on="origin_geoid", right_on="GEOID")
 
     lodes_go = lodes[
         [
-            "origin_cbg",
-            "dest_cbg",
+            "origin_geoid",
+            "dest_geoid",
             "origin_geom",
             "origin_loc_lat",
             "origin_loc_lon",
@@ -45,11 +45,11 @@ def union(path, date, sg_enabled):
 
     lodes_go = lodes_go.rename(
         columns={
-            "origin_cbg": "pickup_cbg",
+            "origin_geoid": "pickup_geoid",
             "origin_geom": "pickup_geom",
             "origin_loc_lat": "pickup_lat",
             "origin_loc_lon": "pickup_lon",
-            "dest_cbg": "dropoff_cbg",
+            "dest_geoid": "dropoff_geoid",
             "dest_geom": "dropoff_geom",
             "dest_loc_lat": "dropoff_lat",
             "dest_loc_lon": "dropoff_lon",
@@ -61,8 +61,8 @@ def union(path, date, sg_enabled):
 
     lodes_return = lodes[
         [
-            "origin_cbg",
-            "dest_cbg",
+            "origin_geoid",
+            "dest_geoid",
             "origin_geom",
             "origin_loc_lat",
             "origin_loc_lon",
@@ -78,11 +78,11 @@ def union(path, date, sg_enabled):
 
     lodes_return = lodes_return.rename(
         columns={
-            "dest_cbg": "pickup_cbg",
+            "dest_geoid": "pickup_geoid",
             "dest_geom": "pickup_geom",
             "dest_loc_lat": "pickup_lat",
             "dest_loc_lon": "pickup_lon",
-            "origin_cbg": "dropoff_cbg",
+            "origin_geoid": "dropoff_geoid",
             "origin_geom": "dropoff_geom",
             "origin_loc_lat": "dropoff_lat",
             "origin_loc_lon": "dropoff_lon",
@@ -102,15 +102,15 @@ def union(path, date, sg_enabled):
 
     if sg_enabled:
         sg = pd.read_csv(f"{path}/safegraph_combs/sg_{date}.csv")
-        # sg = sg.rename(columns={"poi_cbg": "dest_cbg"})
+        # sg = sg.rename(columns={"poi_geoid": "dest_geoid"})
 
-        sg["origin_cbg"] = sg["origin_cbg"].astype(str)
-        # sg = sg.merge(chatta[["GEOID"]], left_on="origin_cbg", right_on="GEOID")
+        sg["origin_geoid"] = sg["origin_geoid"].astype(str)
+        # sg = sg.merge(chatta[["GEOID"]], left_on="origin_geoid", right_on="GEOID")
 
         sg_go = sg[
             [
-                "origin_cbg",
-                "dest_cbg",
+                "origin_geoid",
+                "dest_geoid",
                 "origin_geom",
                 "origin_loc_lat",
                 "origin_loc_lon",
@@ -126,11 +126,11 @@ def union(path, date, sg_enabled):
 
         sg_go = sg_go.rename(
             columns={
-                "origin_cbg": "pickup_cbg",
+                "origin_geoid": "pickup_geoid",
                 "origin_geom": "pickup_geom",
                 "origin_loc_lat": "pickup_lat",
                 "origin_loc_lon": "pickup_lon",
-                "dest_cbg": "dropoff_cbg",
+                "dest_geoid": "dropoff_geoid",
                 "dest_geom": "dropoff_geom",
                 "dest_loc_lat": "dropoff_lat",
                 "dest_loc_lon": "dropoff_lon",
@@ -142,8 +142,8 @@ def union(path, date, sg_enabled):
 
         sg_return = sg[
             [
-                "origin_cbg",
-                "dest_cbg",
+                "origin_geoid",
+                "dest_geoid",
                 "origin_geom",
                 "origin_loc_lat",
                 "origin_loc_lon",
@@ -159,11 +159,11 @@ def union(path, date, sg_enabled):
 
         sg_return = sg_return.rename(
             columns={
-                "dest_cbg": "pickup_cbg",
+                "dest_geoid": "pickup_geoid",
                 "dest_geom": "pickup_geom",
                 "dest_loc_lat": "pickup_lat",
                 "dest_loc_lon": "pickup_lon",
-                "origin_cbg": "dropoff_cbg",
+                "origin_geoid": "dropoff_geoid",
                 "origin_geom": "dropoff_geom",
                 "origin_loc_lat": "dropoff_lat",
                 "origin_loc_lon": "dropoff_lon",

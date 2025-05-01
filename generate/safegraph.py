@@ -15,18 +15,18 @@ import json
 import glob
 
 pd.options.display.float_format = "{:.2f}".format
-from utils import marginal_dist
+from generate.utils import marginal_dist
 
 # COUNTY = '037'
 # CITY = 'Nashville'
-# county_cbg  = gpd.read_file('../data/Tennessee Census Block Groups/tl_2020_47_bg.shp')
-# safe_df =  pd.read_parquet(f'../data/safegraph.parquet/year=2021/region=TN/city={CITY}/', engine='pyarrow')
+# county_geoid  = gpd.read_file('./data/Tennessee Census Block Groups/tl_2020_47_bg.shp')
+# safe_df =  pd.read_parquet(f'./data/safegraph.parquet/year=2021/region=TN/city={CITY}/', engine='pyarrow')
 
 
 class Safegraph:
-    def __init__(self, county, city, county_cbg, safe_df, data_path, start_date, end_date, logger):
+    def __init__(self, county, city, county_geoid, safe_df, data_path, start_date, end_date, logger):
         self.COUNTY = county
-        self.county_cbg = county_cbg
+        self.county_geoid = county_geoid
         self.CITY = city
         self.safe_df = safe_df
         self.data_path = data_path
@@ -77,9 +77,9 @@ class Safegraph:
 
     def get_sg_poi(self):
         self.logger.info("Running get_sg_poi()")
-        county_cbg = gpd.read_file(self.county_cbg)
-        county_cbg = county_cbg[county_cbg.COUNTYFP == self.COUNTY]
-        county_cbg.GEOID = county_cbg.GEOID.astype(str)
+        county_geoid = self.county_geoid_path
+        county_geoid = county_geoid[county_geoid.COUNTYFP == self.COUNTY]
+        county_geoid.GEOID = county_geoid.GEOID.astype(str)
 
         safe_dfs = []
         self.logger.info(self.safe_df)
@@ -88,38 +88,44 @@ class Safegraph:
                 temp = pd.read_parquet(
                     path,
                     engine="pyarrow",
-                    columns=["date_begin", "latitude", "longitude", "poi_cbg"],
+                    columns=["date_begin", "latitude", "longitude", "poi_geoid"],
                 )
                 temp = temp.astype(int).astype(str)
                 safe_dfs.append(temp)
         safe_df = pd.concat(safe_dfs, ignore_index=True)
 
-        safe_df["poi_cbg"] = safe_df["poi_cbg"].astype(str)
+        safe_df["poi_geoid"] = safe_df["poi_geoid"].astype(str)
         safe_df = marginal_dist(
             safe_df,
-            "home_cbg",
-            "poi_cbg",
+            "home_geoid",
+            "poi_geoid",
         )
-        safe_df.merge(county_cbg, left_on="poi_cbg", right_on="GEOID").to_csv(
-            f"{self.data_path}/sg_poi_cbgs.csv", index=False
+        safe_df.merge(county_geoid, left_on="poi_geoid", right_on="GEOID").to_csv(
+            f"{self.data_path}/sg_poi_geoids.csv", index=False
         )
+
+        success = False
+        if type(safe_df) == pd.DataFrame and safe_df.shape[0] > 0:
+            success = True
+
+        return safe_df, success
 
     def by_day(self, row):
         week = 7
         temp = pd.DataFrame()
         start_date = row["date_begin"]
-        visitor_homes = list(chain.from_iterable([[k] * v for k, v in row["visitor_home_cbgs"].items()]))
+        visitor_homes = list(chain.from_iterable([[k] * v for k, v in row["visitor_home_geoids"].items()]))
         norm_dist = self.find_norm_dist(row["bucketed_dwell_times"])
 
         if len(visitor_homes) > 0:
-            home_cbg = random.sample(visitor_homes, 1)[0]
-            visitor_homes.remove(home_cbg)
+            home_geoid = random.sample(visitor_homes, 1)[0]
+            visitor_homes.remove(home_geoid)
 
             for day in range(week):
                 temp.loc[day, "date"] = start_date + timedelta(days=day)
                 temp.loc[day, "visits"] = int(row["visits_by_day"][day])
-                temp.loc[day, "home_cbg"] = str(home_cbg)
-                temp.loc[day, "poi_cbg"] = str(row["poi_cbg"]).split(".")[0]
+                temp.loc[day, "home_geoid"] = str(home_geoid)
+                temp.loc[day, "poi_geoid"] = str(row["poi_geoid"]).split(".")[0]
                 while True:
                     sampled_value = norm_dist.rvs(size=1)
                     if sampled_value >= 0:
@@ -133,9 +139,9 @@ class Safegraph:
 
         random.seed(42)
 
-        county_cbg = gpd.read_file(self.county_cbg)
-        county_cbg = county_cbg[county_cbg.COUNTYFP == self.COUNTY]
-        county_cbg.GEOID = county_cbg.GEOID.astype(str)
+        county_geoid = gpd.read_file(self.county_geoid_path)
+        county_geoid = county_geoid[county_geoid.COUNTYFP == self.COUNTY]
+        county_geoid.GEOID = county_geoid.GEOID.astype(str)
 
         safe_dfs = []
         safe_df_days = pd.DataFrame()
@@ -151,8 +157,8 @@ class Safegraph:
                     columns=[
                         "date_begin",
                         "visits_by_day",
-                        "visitor_home_cbgs",
-                        "poi_cbg",
+                        "visitor_home_geoids",
+                        "poi_geoid",
                         "bucketed_dwell_times",
                     ],
                 )
@@ -162,7 +168,7 @@ class Safegraph:
 
         safe_df = pd.concat(safe_dfs, ignore_index=True)
 
-        safe_df["visitor_home_cbgs"] = safe_df["visitor_home_cbgs"].apply(lambda x: json.loads(x))
+        safe_df["visitor_home_geoids"] = safe_df["visitor_home_geoids"].apply(lambda x: json.loads(x))
         safe_df["bucketed_dwell_times"] = safe_df["bucketed_dwell_times"].apply(lambda x: json.loads(x))
         safe_df["visits_by_day"] = safe_df["visits_by_day"].apply(lambda x: ast.literal_eval(x))
 
@@ -175,11 +181,17 @@ class Safegraph:
             (safe_df_days["date"] >= self.start_date) & (safe_df_days["date"] <= self.end_date)
         ]
 
-        safe_df_days = safe_df_days.merge(county_cbg[["GEOID"]], left_on="home_cbg", right_on="GEOID")
-        safe_df_days = safe_df_days.merge(county_cbg[["GEOID"]], left_on="poi_cbg", right_on="GEOID")
+        safe_df_days = safe_df_days.merge(county_geoid[["GEOID"]], left_on="home_geoid", right_on="GEOID")
+        safe_df_days = safe_df_days.merge(county_geoid[["GEOID"]], left_on="poi_geoid", right_on="GEOID")
 
-        safe_df_days = safe_df_days.groupby(["date", "home_cbg", "poi_cbg"]).sum().reset_index()
+        safe_df_days = safe_df_days.groupby(["date", "home_geoid", "poi_geoid"]).sum().reset_index()
 
         safe_df_days.to_csv(f"{self.data_path}/sg_visits_by_day.csv", index=False)
 
         self.logger.info(safe_df_days.visits.sum())
+
+        success = False
+        if type(safe_df_days) == pd.DataFrame and safe_df_days.shape[0] > 0:
+            success = True
+
+        return safe_df_days, success

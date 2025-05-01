@@ -9,7 +9,7 @@ import warnings
 from shapely.geometry import Point
 import multiprocessing
 
-from utils import get_travel_time
+from generate.utils import get_travel_time
 
 
 warnings.filterwarnings("ignore")
@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 class SgCombs:
     def __init__(
         self,
-        county_cbg,
+        county_geoid,
         data_path,
         ms_enabled,
         timedelta,
@@ -28,7 +28,7 @@ class SgCombs:
         end_date,
         logger,
     ) -> None:
-        self.county_cbg = county_cbg
+        self.county_geoid = county_geoid
         self.data_path = data_path
         self.ms_enabled = ms_enabled
         self.timedelta = timedelta
@@ -59,15 +59,15 @@ class SgCombs:
         self.logger.info("Running safegraph_comb.py")
 
         # # loading geometry data
-        # self.county_cbg = pd.read_csv(f"{self.data_path}/county_cbg.csv")
-        # self.county_cbg["intpt"] = self.county_cbg[["INTPTLAT", "INTPTLON"]].apply(
+        # self.county_geoid = pd.read_csv(f"{self.data_path}/county_geoid.csv")
+        # self.county_geoid["intpt"] = self.county_geoid[["INTPTLAT", "INTPTLON"]].apply(
         #     lambda p: Sg_combs.intpt_func(p), axis=1
         # )
-        # self.county_cbg = gpd.GeoDataFrame(
-        #     self.county_cbg, geometry=gpd.GeoSeries.from_wkt(self.county_cbg.geometry)
+        # self.county_geoid = gpd.GeoDataFrame(
+        #     self.county_geoid, geometry=gpd.GeoSeries.from_wkt(self.county_geoid.geometry)
         # )
-        # self.county_cbg.GEOID = self.county_cbg.GEOID.astype(str)
-        # self.county_cbg["location"] = self.county_cbg.intpt.apply(lambda p: [p.y, p.x])
+        # self.county_geoid.GEOID = self.county_geoid.GEOID.astype(str)
+        # self.county_geoid["location"] = self.county_geoid.intpt.apply(lambda p: [p.y, p.x])
 
         # # loading residential buildings
         # self.res_build = pd.read_csv(
@@ -115,27 +115,27 @@ class SgCombs:
         prob_matrix_sg = gpd.GeoDataFrame()
 
         for idx, movement in sg.iterrows():
-            res = self.res_build[self.res_build.GEOID == movement.origin_cbg].reset_index(drop=True)
+            res = self.res_build[self.res_build.GEOID == movement.origin_geoid].reset_index(drop=True)
             if res.empty:
                 if self.ms_enabled:
                     res = (
-                        self.ms_build[self.ms_build.GEOID == movement.origin_cbg]
+                        self.ms_build[self.ms_build.GEOID == movement.origin_geoid]
                         .sample(n=int(movement.visits), random_state=42, replace=True)
                         .reset_index(drop=True)
                     )
                 if res.empty:
-                    res = self.county_cbg[self.county_cbg.GEOID == movement.origin_cbg].reset_index(drop=True)
+                    res = self.county_geoid[self.county_geoid.GEOID == movement.origin_geoid].reset_index(drop=True)
 
-            com = self.com_build[self.com_build.GEOID == movement.dest_cbg].reset_index(drop=True)
+            com = self.com_build[self.com_build.GEOID == movement.dest_geoid].reset_index(drop=True)
             if com.empty:
                 if self.ms_enabled:
                     com = (
-                        self.ms_build[self.ms_build.GEOID == movement.dest_cbg]
+                        self.ms_build[self.ms_build.GEOID == movement.dest_geoid]
                         .sample(n=int(movement.visits), random_state=42, replace=True)
                         .reset_index(drop=True)
                     )
                 if com.empty:
-                    com = self.county_cbg[self.county_cbg.GEOID == movement.dest_cbg].reset_index(drop=True)
+                    com = self.county_geoid[self.county_geoid.GEOID == movement.dest_geoid].reset_index(drop=True)
 
             r = res.reset_index(drop=True)
             c = com.reset_index(drop=True)
@@ -155,8 +155,8 @@ class SgCombs:
 
                 temp = gpd.GeoDataFrame()
 
-                temp.loc[freq, "origin_cbg"] = movement.origin_cbg
-                temp.loc[freq, "dest_cbg"] = movement.dest_cbg
+                temp.loc[freq, "origin_geoid"] = movement.origin_geoid
+                temp.loc[freq, "dest_geoid"] = movement.dest_geoid
                 temp.loc[freq, "visits"] = movement.visits
                 temp.loc[freq, "origin_loc_lat"] = r_df.location[0]
                 temp.loc[freq, "origin_loc_lon"] = r_df.location[1]
@@ -194,8 +194,8 @@ class SgCombs:
         prob_matrix_sg.to_csv(f"{self.data_path}/safegraph_combs/sg_{day}.csv", index=False)
         self.logger.info(f"Generated for day {day}")
 
-    def main(self, county_cbg, res_build, com_build, ms_build, sg, sg_cpu_max):
-        self.county_cbg = county_cbg
+    def main(self, county_geoid, res_build, com_build, ms_build, sg, sg_cpu_max):
+        self.county_geoid = county_geoid
         self.res_build = res_build
         self.com_build = com_build
         self.ms_build = ms_build
@@ -203,13 +203,13 @@ class SgCombs:
         self.read_data(self)
 
         sg = pd.read_csv(f"{self.data_path}/sg_visits_by_day.csv")
-        sg["origin_cbg"] = sg["origin_cbg"].astype(str)
-        sg["dest_cbg"] = sg["dest_cbg"].astype(str)
+        sg["origin_geoid"] = sg["origin_geoid"].astype(str)
+        sg["dest_geoid"] = sg["dest_geoid"].astype(str)
 
         days = sg.date.unique()
 
         # Sg_combs.generate_OD(sg, days)
-        # Sg_combs.generate_OD(county_lodes, county_cbg, res_build, com_build, ms_build, times)
+        # Sg_combs.generate_OD(county_lodes, county_geoid, res_build, com_build, ms_build, times)
 
         # setting the random seed
         np.random.seed(42)
