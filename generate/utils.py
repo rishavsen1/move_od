@@ -1,10 +1,11 @@
+import json
 import pandas as pd
 import osmnx as ox
 import networkx as nx
 import geopandas as gpd
 import numpy as np
 import re
-from shapely.geometry import Point
+from shapely.geometry import Point, LineString
 import math
 import datetime
 import ast
@@ -16,11 +17,7 @@ import zipfile
 import subprocess
 from io import StringIO
 from multiprocessing import cpu_count, Pool
-from dask import delayed, compute
-from tqdm.auto import tqdm
-import dask.dataframe as dd
 import hashlib
-import os
 
 from generate.config import CENSUS_API_KEY
 
@@ -1320,3 +1317,295 @@ def get_travel_time_osmnx(G, od_record):
         move_time = total_distance = distance_miles = np.nan
 
     return move_time, total_distance, distance_miles
+
+
+# Saving the dictionaries
+def save_building_dictionaries(origin_buildings, dest_buildings, output_path):
+    """Save building dictionaries using a custom approach"""
+    # Create directories
+    os.makedirs(f"{output_path}/origin_buildings", exist_ok=True)
+    os.makedirs(f"{output_path}/dest_buildings", exist_ok=True)
+
+    # Save origin buildings
+    origin_metadata = {}
+    for geocode, data in origin_buildings.items():
+        # Save the buildings DataFrame
+        buildings_file = f"{output_path}/origin_buildings/{geocode}_buildings.parquet"
+        data["buildings"].to_parquet(buildings_file)
+
+        # Save metadata
+        origin_metadata[geocode] = {"buildings_file": buildings_file, "locations": data["locations"]}
+
+    # Save dest buildings
+    dest_metadata = {}
+    for geocode, data in dest_buildings.items():
+        # Save the buildings DataFrame
+        buildings_file = f"{output_path}/dest_buildings/{geocode}_buildings.parquet"
+        data["buildings"].to_parquet(buildings_file)
+
+        # Save metadata
+        dest_metadata[geocode] = {"buildings_file": buildings_file, "locations": data["locations"]}
+
+    # Save metadata files
+    with open(f"{output_path}/origin_metadata.json", "w") as f:
+        json.dump(origin_metadata, f)
+
+    with open(f"{output_path}/dest_metadata.json", "w") as f:
+        json.dump(dest_metadata, f)
+
+    print(f"Building dictionaries saved to {output_path}")
+
+
+# Loading the dictionaries
+def load_building_dictionaries(output_path):
+    """Load building dictionaries using a custom approach"""
+    # Load metadata
+    with open(f"{output_path}/origin_metadata.json", "r") as f:
+        origin_metadata = json.load(f)
+
+    with open(f"{output_path}/dest_metadata.json", "r") as f:
+        dest_metadata = json.load(f)
+
+    # Reconstruct dictionaries
+    origin_buildings = {}
+    for geocode, metadata in origin_metadata.items():
+        buildings = pd.read_parquet(metadata["buildings_file"])
+        origin_buildings[geocode] = {"buildings": buildings, "locations": metadata["locations"]}
+
+    dest_buildings = {}
+    for geocode, metadata in dest_metadata.items():
+        buildings = pd.read_parquet(metadata["buildings_file"])
+        dest_buildings[geocode] = {"buildings": buildings, "locations": metadata["locations"]}
+
+    return origin_buildings, dest_buildings
+
+
+def calculate_speed_shift(routing_df, travel_time_to_work_by_geoid):
+    """
+    Calculate the Mean Speed Shift Ratio (MSSr) based on simulated and census travel times.
+
+    Parameters:
+    -----------
+    routing_df : DataFrame
+        DataFrame containing the simulated travel times
+    travel_time_to_work_by_geoid : DataFrame
+        DataFrame containing the census travel times
+
+    Returns:
+    --------
+    float
+        Mean Speed Shift Ratio (MSSr)
+    """
+    # Calculate mean simulated travel time
+    mean_simulated_time = routing_df["travel_time_min"].mean()
+
+    # Calculate mean census travel time (weighted average from bins)
+    time_columns = [col for col in travel_time_to_work_by_geoid.columns if "_estimate" in col and "total_" not in col]
+
+    # Define midpoint values for each time bin (in minutes)
+    time_midpoints = {
+        "under_5_minutes_estimate": 2.5,
+        "5_to_9_minutes_estimate": 7.0,
+        "10_to_14_minutes_estimate": 12.0,
+        "15_to_19_minutes_estimate": 17.0,
+        "20_to_24_minutes_estimate": 22.0,
+        "25_to_29_minutes_estimate": 27.0,
+        "30_to_34_minutes_estimate": 32.0,
+        "35_to_39_minutes_estimate": 37.0,
+        "40_to_44_minutes_estimate": 42.0,
+        "45_to_59_minutes_estimate": 52.0,
+        "60_to_89_minutes_estimate": 75.0,
+        "90_minutes_and_over_estimate": 105.0,
+    }
+
+    # Calculate weighted average
+    total_commuters = travel_time_to_work_by_geoid["total_estimate"].sum()
+    weighted_sum = 0
+
+    for col in time_columns:
+        # if col in time_midpoints.keys():
+        weighted_sum += travel_time_to_work_by_geoid[col].sum() * time_midpoints[col]
+
+    mean_census_time = weighted_sum / total_commuters if total_commuters > 0 else 0
+
+    # Calculate MSSr
+    mssr = (mean_census_time - mean_simulated_time) / mean_census_time if mean_census_time > 0 else 0
+
+    print(f"Mean Simulated Travel Time: {mean_simulated_time:.2f} minutes")
+    print(f"Mean Census Travel Time: {mean_census_time:.2f} minutes")
+    print(f"Mean Speed Shift Ratio (MSSr): {mssr:.4f}")
+
+    return mssr
+
+
+def apply_mssr_to_existing_graphs(hourly_graphs, mssr):
+    """
+    Apply Mean Speed Shift Ratio to existing hourly graphs.
+    Only modifies edges that don't have INRIX data.
+    """
+    # Calculate speed adjustment factor
+    speed_adjustment_factor = 1.0 / (1.0 + mssr)
+    adjusted_graphs = {}
+
+    print(f"Applying speed adjustment factor: {speed_adjustment_factor:.4f}")
+
+    for hour, G_hour in hourly_graphs.items():
+        # Create a copy of the graph
+        G_adjusted = G_hour.copy()
+
+        default_edges = 0
+        inrix_edges = 0
+
+        # Adjust speeds for non-INRIX edges
+        for u, v, k, data in G_adjusted.edges(keys=True, data=True):
+            # Check if this edge has INRIX data
+            if data.get("inrix_speed", False):
+                inrix_edges += 1
+                continue
+
+            # This is a default speed edge
+            default_edges += 1
+
+            # Get the current speed
+            if "speed_kph" in data:
+                original_speed = data["speed_kph"]
+            else:
+                # Calculate speed from length and travel time
+                length = data.get("length", 0)
+                travel_time = data.get("travel_time", 0)
+                original_speed = (3.6 * length) / travel_time if travel_time > 0 else 80
+
+            # Apply speed shift
+            adjusted_speed = original_speed * speed_adjustment_factor
+
+            # Update edge data
+            if "length" in data and adjusted_speed > 0:
+                travel_time = (3.6 * data["length"]) / adjusted_speed
+                data["travel_time"] = travel_time
+                data["weight"] = travel_time
+                data["speed_kph"] = adjusted_speed
+
+        print(f"Hour {hour}: Adjusted {default_edges} default edges, kept {inrix_edges} INRIX edges")
+        adjusted_graphs[hour] = G_adjusted
+
+    return adjusted_graphs
+
+
+def create_hourly_graphs_with_speed_shift(all_hours, hourly_inrix_df, conversion_df, mssr, default_speed_kmh=80):
+    """
+    Create hourly graphs with speed shift applied to default speed edges.
+
+    Parameters:
+    -----------
+    all_hours : list
+        List of hour timestamps
+    hourly_inrix_df : DataFrame
+        DataFrame with INRIX speed data
+    conversion_df : DataFrame
+        DataFrame for mapping INRIX IDs to OSM edges
+    mssr : float
+        Mean Speed Shift Ratio
+    default_speed_kmh : float, optional
+        Default speed for edges without INRIX data (km/h)
+
+    Returns:
+    --------
+    dict
+        Dictionary of hourly graphs with adjusted speeds
+    """
+    # Calculate speed adjustment factor (inverse of MSSR effect on time)
+    speed_adjustment_factor = 1.0 / (1.0 + mssr)
+    adjusted_default_speed = default_speed_kmh * speed_adjustment_factor
+
+    print(
+        f"Speed Adjustment: Original default = {default_speed_kmh} km/h, Adjusted = {adjusted_default_speed:.1f} km/h"
+    )
+    print(
+        f"Adjustment factor = {speed_adjustment_factor:.4f} (speeds are being {'increased' if speed_adjustment_factor > 1 else 'decreased'})"
+    )
+
+    hourly_graphs = {}  # Store G_hour per timestamp
+
+    for hour in all_hours:
+        # Filter INRIX for this hour
+        inrix_snapshot = hourly_inrix_df[hourly_inrix_df["measurement_tstamp"] == hour]
+
+        # Merge with conversion
+        merged_df = pd.merge(inrix_snapshot, conversion_df, left_on="xd_id", right_on="xd")
+
+        # Create LineStrings
+        geometries = [
+            LineString([(x1, y1), (x2, y2)])
+            for x1, y1, x2, y2 in zip(
+                merged_df["start_longitude"],
+                merged_df["start_latitude"],
+                merged_df["end_longitude"],
+                merged_df["end_latitude"],
+            )
+        ]
+        inrix_gdf = gpd.GeoDataFrame(merged_df, geometry=geometries, crs="EPSG:4326")
+
+        # Fetch OSM network only once (outside loop for efficiency)
+        if "G_base" not in locals():
+            G_base = ox.graph_from_place("Hamilton County, TN, USA", network_type="drive")
+            edges_base = ox.graph_to_gdfs(G_base, nodes=False, edges=True).to_crs(epsg=3857)
+
+        # Project INRIX and join to edges
+        inrix_proj = inrix_gdf.to_crs(epsg=3857)
+        joined = gpd.sjoin_nearest(inrix_proj, edges_base, how="left", distance_col="dist")
+
+        # Clone graph
+        G_hour = G_base.copy()
+
+        # Track which edges have INRIX speeds
+        inrix_edges = set()
+
+        # Update edge weights in G_hour using INRIX speeds
+        for idx, row in joined.iterrows():
+            u, v, key = row["index_right0"], row["index_right1"], row["index_right2"]
+            speed = row["speed"]
+            length = row["length"]
+            if pd.notnull(speed) and speed > 0:
+                # Mark this as an INRIX edge
+                inrix_edges.add((u, v, key))
+
+                # Calculate travel time using INRIX speed
+                travel_time = (3.6 * length) / speed
+
+                # Update graph edge
+                G_hour[u][v][key]["travel_time"] = travel_time
+                G_hour[u][v][key]["weight"] = travel_time
+                G_hour[u][v][key]["speed_kph"] = speed
+                G_hour[u][v][key]["inrix_speed"] = True
+
+        # Assign adjusted default speeds to edges without INRIX data
+        default_edges = 0
+        for u, v, k, data in G_hour.edges(keys=True, data=True):
+            if (u, v, k) not in inrix_edges:
+                length = data.get("length", None)
+                if length:
+                    # Apply speed shift to default speed
+                    speed = adjusted_default_speed
+                    travel_time = (3.6 * length) / speed
+
+                    # Update edge data
+                    data["travel_time"] = travel_time
+                    data["weight"] = travel_time
+                    data["speed_kph"] = speed
+                    data["inrix_speed"] = False
+                    default_edges += 1
+
+        # Store statistics for this hour
+        inrix_coverage = (
+            len(inrix_edges) / (len(inrix_edges) + default_edges) * 100
+            if (len(inrix_edges) + default_edges) > 0
+            else 0
+        )
+        print(
+            f"Hour {hour}: {len(inrix_edges)} INRIX edges, {default_edges} default edges ({inrix_coverage:.1f}% INRIX coverage)"
+        )
+
+        # Store graph
+        hourly_graphs[hour] = G_hour
+
+    return hourly_graphs

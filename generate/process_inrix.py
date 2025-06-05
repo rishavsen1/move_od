@@ -9,13 +9,10 @@ from generate.config import *
 
 
 def find_origin_dest_nodes(df, G):
-    origin_locs = df["origin_loc_lat"].to_list()
-    dest_locs = df["dest_loc_lat"].to_list()
-
-    origin_lons = [p[1] for p in origin_locs]
-    origin_lats = [p[0] for p in origin_locs]
-    dest_lons = [p[1] for p in dest_locs]
-    dest_lats = [p[0] for p in dest_locs]
+    origin_lons = df["origin_loc_lon"].to_list()
+    origin_lats = df["origin_loc_lat"].to_list()
+    dest_lons = df["dest_loc_lon"].to_list()
+    dest_lats = df["dest_loc_lat"].to_list()
 
     origin_nodes = ox.distance.nearest_nodes(G, X=origin_lons, Y=origin_lats)
     dest_nodes = ox.distance.nearest_nodes(G, X=dest_lons, Y=dest_lats)

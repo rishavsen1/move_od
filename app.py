@@ -4,7 +4,8 @@ import datetime
 import pandas as pd
 import numpy as np
 import geopandas as gpd
-import shapely
+import zipfile
+import io
 
 from generate.lodes_read import LodesGen
 from generate.safegraph import Safegraph
@@ -14,14 +15,40 @@ from generate.lodes_combs import LodesComb
 from generate.process_inrix import process_inrix
 from generate.safegraph_combs import SgCombs
 from generate.union_lodes_sg import union
+from generate.generate_routing_df import get_routed, perform_mean_speed_shift
+from generate.calibrate_ilp import calibrate_with_ilp
 from generate.utils import *
-import generate.union_lodes_sg
 
 from generate.logger import Logger
+
+import multiprocessing as mp
+
+if __name__ == "__main__":
+    mp.set_start_method("spawn", force=True)
 
 # # Ensure the script runs from the base folder of the repository
 # base_path = os.path.dirname(os.path.abspath(__file__))
 # os.chdir(base_path)
+
+
+def zip_and_download(output_path):
+    # Zip all files in output_path
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(output_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, output_path)
+                zipf.write(file_path, arcname=arcname)
+    zip_buffer.seek(0)
+
+    # Add download button to Streamlit
+    st.download_button(
+        label="Download All Calibrated Files (ZIP)",
+        data=zip_buffer,
+        file_name="calibrated_move_od.zip",
+        mime="application/zip",
+    )
 
 
 def read_county_geoid_df(county_geoid_path, output_path, logger):
@@ -144,6 +171,11 @@ def read_inrix_data(start_date, inrix_path, inrix_conversion_path):
 
 st.set_page_config(layout="wide")
 
+if "processing_complete" not in st.session_state:
+    st.session_state.processing_complete = False
+if "processing_data" not in st.session_state:
+    st.session_state.processing_data = {}
+
 
 def set_dates():
     if len(st.session_state.dates) == 2:
@@ -163,9 +195,9 @@ os.makedirs("log_files", exist_ok=True)
 
 st.header("MOVE-OD")
 
-st.write(
-    "You can find FIPS codes here: [Federal Information Processing System (FIPS) Codes for States and Counties](https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt)"
-)
+# st.write(
+#     "You can find FIPS codes here: [Federal Information Processing System (FIPS) Codes for States and Counties](https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt)"
+# )
 col1, col2, col3 = st.columns(3)
 
 
@@ -175,17 +207,17 @@ with col1:
 with col2:
     county = st.selectbox("County", options=sorted(counties_in_state[state]), index=32)
 with col3:
-    county_fips = st.text_input("County's FIPS code", value=(str(county_fips[state, county][0])[-3:]))
-city = ""
-state_id = states[state]
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
     st.session_state.dates = st.date_input(
         "Enter date range",
         value=(st.session_state.start_date, st.session_state.end_date),
     )
+#     county_fips = st.text_input("County's FIPS code", value=(str(county_fips[state, county][0])[-3:]))
+city = ""
+state_id = states[state]
+county_fips = str(county_fips[state, county][0])[-3:]
+# col1, col2, col3 = st.columns(3)
+
+# with col1:
 
 set_dates()
 start_date = st.session_state.start_date
@@ -219,22 +251,23 @@ else:
 sg_enabled = False
 lodes_enabled = False
 
-choice = col2.multiselect("Choose type of data to generate for:", ["LODES", "Safegraph"], default=["LODES"])
-lodes_year = col3.text_input("Enter LODES data year (Latest year is 2022):", value=("2022"))
+# choice = col2.multiselect("Choose type of data to generate for:", ["LODES", "Safegraph"], default=["LODES"])
+choice = ["LODES"]
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 # translation = col2.text_input("INRIX translation file", value=f"{inrix_path}/USA_Tennessee.zip")
 # segments = col1.text_input(
 #     "INRIX translation segments file", value=f"{inrix_path}/USA_TN_OSM_20231201_segments_shapefile.zip"
 # )
 inrix_folder_path = "./data/inrix"
-inrix_path = col1.text_input("INRIX data path", value=f"{inrix_folder_path}/Hamilton-County-INRIX.csv")
-inrix_conversion_path = col2.text_input("INRIX conversion path", value=f"{inrix_folder_path}/XD_Identification.csv")
+lodes_year = col1.text_input("Enter LODES data year (Latest year is 2022):", value=("2022"))
 
-tiger_shapefile_year = col3.text_input("Enter TIGER shpaefile year (Latest year is 2024):", value=("2024"))
+tiger_shapefile_year = col2.text_input("Enter TIGER shapefile year (Latest year is 2024):", value=("2024"))
+inrix_path = col3.text_input("INRIX data path", value=f"{inrix_folder_path}/Hamilton-County-INRIX.csv")
+inrix_conversion_path = col4.text_input("INRIX conversion path", value=f"{inrix_folder_path}/XD_Identification.csv")
 
-output_path = f"./move_OD/{state}/{county}/{start_date}_{end_date}"
+output_path = f"./move_OD2/{state}/{county}/{start_date}_{end_date}"
 st.write(f"Output file path: {output_path}")
 
 
@@ -265,20 +298,29 @@ else:
 
 ms_enabled = col1.checkbox("Use Global Buildings Footprint data", value=True)
 
-od_option = st.radio(
-    "Choose an option for OD generation:",
-    (
-        "Origin and Destination in same County",
-        # "Only Origin in County",
-        # "Only Destination in County",
-    ),
-)
+# od_option = st.radio(
+#     "Choose an option for OD generation:",
+#     (
+#         "Origin and Destination in same County",
+#         # "Only Origin in County",
+#         # "Only Destination in County",
+#     ),
+# )
+
+od_option = "Origin and Destination in same County"
 
 # st.write("You selected:", od_option)
 
 begin = st.button("Begin process")
 
+if st.session_state.processing_complete:
+    if st.button("🔄 Reset and Start New Process"):
+        st.session_state.processing_complete = False
+        st.session_state.processing_data = {}
+        st.rerun()
+
 if begin:
+    st.session_state.processing_complete = False
 
     with st.spinner("Downloading and gathering files"):
         invalid_path = False
@@ -420,6 +462,7 @@ if begin:
 
         G, hourly_graphs = read_inrix_data(start_date, inrix_path, inrix_conversion_path)
 
+        success = False
         if "LODES" in choice:
             lodes_combs = LodesComb(
                 county_geoid_df,
@@ -428,7 +471,7 @@ if begin:
                 datetime_ranges,
                 logger,
             )
-            lodes_combs.main(
+            lodes_output_dfs, days, travel_time_to_work_df, census_depart_times_df = lodes_combs.main(
                 county_geoid_df,
                 res_locations,
                 combined_work_locations,
@@ -440,9 +483,292 @@ if begin:
                 hourly_graphs,
                 block_groups="*",
             )
-            st.success("Custom OD generated (LODES)")
+            if len(lodes_output_dfs) >= 1:
+                success = True
 
         if "Safegraph" in choice and "LODES" in choice:
             days = pd.date_range(start_date, end_date, freq="d").to_list()
             for day in days:
                 union(output_path, day, sg_enabled)
+            success = True
+
+        if success:
+            calibrated_output_path = f"{output_path}/calibrated_move_od/"
+            os.makedirs(calibrated_output_path, exist_ok=True)
+
+            for day, lodes_output_df in zip(days, lodes_output_dfs):
+                # getting routed trips and travel times
+                routing_df = get_routed(
+                    od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs
+                )
+
+                print(routing_df.head())
+
+                # perforing mean speed shift and generating new graphs
+                hourly_graphs_adjusted = perform_mean_speed_shift(
+                    routing_df=routing_df, travel_time_to_work_by_geoid=travel_time_to_work_df
+                )
+
+                # getting routed trips and travel times post mssr
+                post_mssr_routing_df = get_routed(
+                    od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs_adjusted
+                )
+
+                # calibrated trips
+                calibrated_df = calibrate_with_ilp(
+                    lodes_output_df,
+                    routing_df,
+                    res_locations,
+                    combined_work_locations,
+                    ms_buildings_df,
+                    census_depart_times_df,
+                    travel_time_to_work_df,
+                )
+
+                # getting travel times for calibrated df
+                routing_df = get_routed(
+                    od_df=calibrated_df,
+                    desired_date=start_date,
+                    hourly_graphs_arg=hourly_graphs,
+                    post_calibration=True,
+                )
+
+                calibrated_df_output_path = f"{calibrated_output_path}/{day}.csv"
+                calibrated_df.to_csv(calibrated_df_output_path)
+
+            st.success("Calibrated ODs generated")
+
+            zip_and_download(calibrated_output_path)
+
+        if success:
+            # Store all necessary data in session state
+            st.session_state.processing_complete = True
+            st.session_state.processing_data = {
+                "res_locations": res_locations,
+                "combined_work_locations": combined_work_locations,
+                "county_geoid_df": county_geoid_df,
+                "logger": logger,
+            }
+
+if st.session_state.processing_complete:
+
+    st.success("Processing complete! Displaying origin-destination map...")
+
+    # Retrieve data from session state
+    data = st.session_state.processing_data
+    res_locations = data["res_locations"]
+    combined_work_locations = data["combined_work_locations"]
+    county_geoid_df = data["county_geoid_df"]
+    logger = data["logger"]
+
+    # Add user choice for what to display
+    st.subheader("Origin-Destination Locations Map")
+
+    # Map display options
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        map_choice = st.selectbox(
+            "Choose what to display:",
+            ["Both Origins and Destinations", "Origins Only", "Destinations Only", "OD Heatmap"],
+            index=0,
+        )
+    with col2:
+        sample_size = st.slider("Sample size (for performance)", min_value=100, max_value=5000, value=1000, step=100)
+    with col3:
+        if map_choice == "OD Heatmap":
+            heatmap_type = st.selectbox("Heatmap type:", ["Point Density", "Hexagonal Binning"], index=0)
+
+    # Display summary statistics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        origins_count = len(res_locations) if not res_locations.empty else 0
+        st.metric("Total Origins", origins_count)
+    with col2:
+        destinations_count = len(combined_work_locations) if not combined_work_locations.empty else 0
+        st.metric("Total Destinations", destinations_count)
+    with col3:
+        total_locations = origins_count + destinations_count
+        st.metric("Total Locations", total_locations)
+
+    # Folium map with color differentiation and heatmap
+    try:
+        import folium
+        from streamlit_folium import st_folium
+        from folium.plugins import HeatMap, MarkerCluster
+        import numpy as np
+
+        # Prepare data based on user choice
+        origins_sample = pd.DataFrame()
+        destinations_sample = pd.DataFrame()
+
+        if not res_locations.empty and map_choice in ["Both Origins and Destinations", "Origins Only", "OD Heatmap"]:
+            origins_df = res_locations.copy()
+            origins_df["lat"] = origins_df["location"].apply(
+                lambda x: x[0] if isinstance(x, list) and len(x) >= 2 else None
+            )
+            origins_df["lon"] = origins_df["location"].apply(
+                lambda x: x[1] if isinstance(x, list) and len(x) >= 2 else None
+            )
+            origins_sample = origins_df.dropna(subset=["lat", "lon"]).sample(
+                n=min(sample_size, len(origins_df)), random_state=42
+            )
+
+        if not combined_work_locations.empty and map_choice in [
+            "Both Origins and Destinations",
+            "Destinations Only",
+            "OD Heatmap",
+        ]:
+            destinations_df = combined_work_locations.copy()
+            destinations_df["lat"] = destinations_df["location"].apply(
+                lambda x: x[0] if isinstance(x, list) and len(x) >= 2 else None
+            )
+            destinations_df["lon"] = destinations_df["location"].apply(
+                lambda x: x[1] if isinstance(x, list) and len(x) >= 2 else None
+            )
+            destinations_sample = destinations_df.dropna(subset=["lat", "lon"]).sample(
+                n=min(sample_size, len(destinations_df)), random_state=42
+            )
+
+        # Calculate center for folium map
+        all_points = []
+        if not origins_sample.empty:
+            all_points.extend(origins_sample[["lat", "lon"]].values.tolist())
+        if not destinations_sample.empty:
+            all_points.extend(destinations_sample[["lat", "lon"]].values.tolist())
+
+        if all_points:
+            center_lat = np.mean([p[0] for p in all_points])
+            center_lon = np.mean([p[1] for p in all_points])
+
+            # Create folium map
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+
+            if map_choice == "OD Heatmap":
+                # Create heatmap/hexplot
+                if heatmap_type == "Point Density":
+                    # Combined heatmap of all locations
+                    heat_data = all_points
+                    if heat_data:
+                        HeatMap(
+                            heat_data,
+                            radius=15,
+                            blur=10,
+                            max_zoom=1,
+                            gradient={0.4: "blue", 0.6: "cyan", 0.7: "lime", 0.8: "yellow", 1.0: "red"},
+                        ).add_to(m)
+
+                        # Add separate heatmaps for origins and destinations with different colors
+                        if not origins_sample.empty:
+                            origins_heat = origins_sample[["lat", "lon"]].values.tolist()
+                            HeatMap(
+                                origins_heat,
+                                radius=12,
+                                blur=8,
+                                max_zoom=1,
+                                gradient={0.4: "darkgreen", 0.6: "green", 0.8: "lightgreen", 1.0: "lime"},
+                                name="Origins Density",
+                            ).add_to(m)
+
+                        if not destinations_sample.empty:
+                            dest_heat = destinations_sample[["lat", "lon"]].values.tolist()
+                            HeatMap(
+                                dest_heat,
+                                radius=12,
+                                blur=8,
+                                max_zoom=1,
+                                gradient={0.4: "darkred", 0.6: "red", 0.8: "orange", 1.0: "yellow"},
+                                name="Destinations Density",
+                            ).add_to(m)
+
+                elif heatmap_type == "Hexagonal Binning":
+                    # Use MarkerCluster as a substitute for hexagonal clustering
+                    if not origins_sample.empty:
+                        origins_cluster = MarkerCluster(name="Origins Cluster")
+                        for _, row in origins_sample.iterrows():
+                            folium.Marker(
+                                location=[row["lat"], row["lon"]],
+                                icon=folium.Icon(color="green"),
+                                popup="Origin (Residential)",
+                            ).add_to(origins_cluster)
+                        origins_cluster.add_to(m)
+
+                    if not destinations_sample.empty:
+                        dest_cluster = MarkerCluster(name="Destinations Cluster")
+                        for _, row in destinations_sample.iterrows():
+                            folium.Marker(
+                                location=[row["lat"], row["lon"]],
+                                icon=folium.Icon(color="red"),
+                                popup="Destination (Workplace)",
+                            ).add_to(dest_cluster)
+                        dest_cluster.add_to(m)
+
+                # Add layer control
+                folium.LayerControl().add_to(m)
+
+                st.write("**Heatmap**: Density visualization of origins and destinations")
+
+            else:
+                # Regular point markers
+                if map_choice in ["Both Origins and Destinations", "Origins Only"] and not origins_sample.empty:
+                    for _, row in origins_sample.iterrows():
+                        folium.CircleMarker(
+                            location=[row["lat"], row["lon"]],
+                            radius=3,
+                            color="green",
+                            fillColor="green",
+                            fillOpacity=0.7,
+                            popup="Origin (Residential)",
+                            weight=1,
+                        ).add_to(m)
+
+                if (
+                    map_choice in ["Both Origins and Destinations", "Destinations Only"]
+                    and not destinations_sample.empty
+                ):
+                    for _, row in destinations_sample.iterrows():
+                        folium.CircleMarker(
+                            location=[row["lat"], row["lon"]],
+                            radius=3,
+                            color="red",
+                            fillColor="red",
+                            fillOpacity=0.7,
+                            popup="Destination (Workplace)",
+                            weight=1,
+                        ).add_to(m)
+
+                # Legend
+                if map_choice == "Both Origins and Destinations":
+                    st.write("🟢 Green: Origins (Residential) | 🔴 Red: Destinations (Workplace)")
+                elif map_choice == "Origins Only":
+                    st.write("🟢 Green: Origins (Residential)")
+                else:
+                    st.write("🔴 Red: Destinations (Workplace)")
+
+            # Display the folium map
+            # Make the map span the width of the page dynamically
+            st_folium(m, use_container_width=True, height=600)
+
+            # Additional information
+            if map_choice == "OD Heatmap":
+                st.info(f"Showing {heatmap_type.lower()} for {len(all_points)} total locations")
+            else:
+                displayed_origins = len(origins_sample) if not origins_sample.empty else 0
+                displayed_destinations = len(destinations_sample) if not destinations_sample.empty else 0
+                st.info(f"Displaying {displayed_origins} origins and {displayed_destinations} destinations")
+
+        else:
+            st.warning("No valid location data found for mapping")
+
+    except ImportError as e:
+        st.error(f"Missing required packages. Please install: `pip install folium streamlit-folium`")
+        st.error(f"Error: {e}")
+
+    # Optional: Add county boundary information
+    if not county_geoid_df.empty:
+        with st.expander("County Information"):
+            try:
+                bounds = county_geoid_df.total_bounds  # [minx, miny, maxx, maxy]
+                st.write(f"**County bounds**: {bounds}")
+                st.write(f"**Census block groups**: {len(county_geoid_df)}")
+            except Exception as e:
+                logger.warning(f"Could not display county boundary: {e}")
