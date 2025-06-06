@@ -319,6 +319,8 @@ if st.session_state.processing_complete:
         st.session_state.processing_data = {}
         st.rerun()
 
+calibrated_output_path = ""
+
 if begin:
     st.session_state.processing_complete = False
 
@@ -535,10 +537,9 @@ if begin:
 
                 calibrated_df_output_path = f"{calibrated_output_path}/{day}.csv"
                 calibrated_df.to_csv(calibrated_df_output_path)
+                st.session_state.calibrated_output_path = calibrated_output_path
 
             st.success("Calibrated ODs generated")
-
-            zip_and_download(calibrated_output_path)
 
         if success:
             # Store all necessary data in session state
@@ -551,6 +552,11 @@ if begin:
             }
 
 if st.session_state.processing_complete:
+
+    if hasattr(st.session_state, "calibrated_output_path"):
+        zip_and_download(st.session_state.calibrated_output_path)
+    else:
+        st.error("Calibrated output path not found")
 
     st.success("Processing complete! Displaying origin-destination map...")
 
