@@ -79,9 +79,9 @@ def process_od_pair_with_geoid(od_task):
 
     # Compute shortest path
     try:
-        route = nx.shortest_path(G_hour, source=orig_node, target=dest_node, weight="weight")
+        route = nx.shortest_path(G_hour, source=orig_node, target=dest_node, weight="travel_time")
         # Sum travel time
-        total_travel_time_sec = sum(G_hour[u][v][0].get("weight", 0) for u, v in zip(route[:-1], route[1:]))
+        total_travel_time_sec = sum(G_hour[u][v][0].get("travel_time", 0) for u, v in zip(route[:-1], route[1:]))
 
         # Calculate total distance in meters, then convert to miles
         total_distance_m = sum(G_hour[u][v][0].get("length", 0) for u, v in zip(route[:-1], route[1:]))

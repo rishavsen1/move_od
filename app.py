@@ -157,14 +157,22 @@ def read_origin_dest_locations(county_fips, county, county_geoid_df, sg_enabled,
 
 
 def read_inrix_data(start_date, inrix_path, inrix_conversion_path):
-    inrix_df = pd.read_csv(inrix_path)
-    conversion_df = pd.read_csv(inrix_conversion_path)
+    inrix_df = None
+    conversion_df = None
+    if not os.path.exists(inrix_path):
+        logger.info(f"INRIX data file not found at: {inrix_path}")
+        if not os.path.exists(inrix_conversion_path):
+            logger.info(f"INRIX conversion file not found at: {inrix_conversion_path}")
+    else:
+        st.success(f"Creating graph using OSM default speeds")
+        inrix_df = pd.read_csv(inrix_path)
+        conversion_df = pd.read_csv(inrix_conversion_path)
 
-    desired_date = start_date
-    inrix_df["measurement_tstamp"] = pd.to_datetime(inrix_df["measurement_tstamp"])
-    inrix_df = inrix_df[inrix_df["measurement_tstamp"].dt.date == desired_date]
+        desired_date = start_date
+        inrix_df["measurement_tstamp"] = pd.to_datetime(inrix_df["measurement_tstamp"])
+        inrix_df = inrix_df[inrix_df["measurement_tstamp"].dt.date == desired_date]
 
-    G, hourly_graphs = process_inrix(state, county, inrix_df, conversion_df)
+    G, hourly_graphs = process_inrix(state, county, inrix_df, conversion_df, start_date)
 
     return G, hourly_graphs
 
@@ -311,7 +319,7 @@ od_option = "Origin and Destination in same County"
 
 # st.write("You selected:", od_option)
 
-begin = st.button("Begin process")
+begin = st.button("BEGIN")
 
 if st.session_state.processing_complete:
     if st.button("🔄 Reset and Start New Process"):

@@ -2,6 +2,7 @@
 
 We can generate origin-destination (OD) pairs for a given county or city, from the releveant datasets about the region. The geographic areas are divided into census tracts(larger, poor resolution) and census block groups (CBGs) (smaller, better resolution). We find the movement matrix of people travelling for jobs (LODES), or general purposes (Safegraph).
 
+<!--
 ## The data
 
 1. Geographic data
@@ -38,21 +39,21 @@ There are a few assumptions made to help in the process of sampleing the data:
 2. The travel start time(go_time) is sampled randomly from 7AM to 9AM (at 15min intervals)
 3. The return time is sampled randomly from 4PM to 6PM (at 15min intervals)
 
-For example if an OD pair has 50 people travelling among them, then we sample 50 home and 50 work locations and randomly choose 50 start and return times in the manner described.
+For example if an OD pair has 50 people travelling among them, then we sample 50 home and 50 work locations and randomly choose 50 start and return times in the manner described. -->
 
 ## Running the pipeline
 
-(This was run on python 3.9 on Ubuntu machine)
+(This was run on python 3.10 on an Ubuntu 22.14 machine)
+
 Install the requirements using `pip install -r requirements.txt`.
 
 After installing Streamlit, run the command:
 
 ```
-$ pip install -r requirements.txt
 $ streamlit run app.py --browser.gatherUsageStats False
 ```
 
-Now you can enter the necessary data and selct between **LODES** OD generation. The result will be produced in the chosen output folder.
+Now you can select the State, County and if you have INRIX road speeds, you may provide them. The result will be produced in the display output folder under `/calibrated_move_od`.
 
 ## Explanation of the generated OD data
 
@@ -77,7 +78,7 @@ The columns(with their datatypes) are:
 - return_time_str/time_1_str(string): time the person leaves the workplace - in 24 hour format (as a string)
 - home_geom(Point): shapely point of home location
 - work_geom(Point): shapely point of work location -->
-
+<!--
 For LODES, the times are written as time_0, time_1 ... because there may be additional time windows that we may want to add in the OD generation.
 
 LODES OD dataset example:
@@ -105,4 +106,4 @@ git clone https://github.com/rishavsen1/otp-carta.git
 docker run -it \
   --name otp-carta-container \
   -p 8080:8080 otp-carta java -Xmx3G -jar otp-1.5.0-shaded.jar --build /app/otp --inMemory
-```
+``` -->
