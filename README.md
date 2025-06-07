@@ -52,12 +52,13 @@ $ pip install -r requirements.txt
 $ streamlit run app.py --browser.gatherUsageStats False
 ```
 
-Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced in the chosen output folder.
+Now you can enter the necessary data and selct between **LODES** OD generation. The result will be produced in the chosen output folder.
 
 ## Explanation of the generated OD data
 
 The generated data has been converted to parquet and is available in the folder you selected to be the output folder. ( by deafult: `generated_OD`)
 
+<!--
 Each row in either dataset represents a single trip by one person. In the case of lodes dataset, the trip represent movement to the job location and then back to home. Here are the key columns.
 
 The columns(with their datatypes) are:
@@ -75,7 +76,7 @@ The columns(with their datatypes) are:
 - go_time_str/time_0_str(string): time the person leaves the home - in 24 hour format (as a string)
 - return_time_str/time_1_str(string): time the person leaves the workplace - in 24 hour format (as a string)
 - home_geom(Point): shapely point of home location
-- work_geom(Point): shapely point of work location
+- work_geom(Point): shapely point of work location -->
 
 For LODES, the times are written as time_0, time_1 ... because there may be additional time windows that we may want to add in the OD generation.
 
