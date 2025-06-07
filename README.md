@@ -48,8 +48,8 @@ Install the requirements using `pip install -r requirements.txt`.
 After installing Streamlit, run the command:
 
 ```
-$ cd OD_generation_scripts
-$ streamlit run front_app.py --browser.gatherUsageStats False
+$ pip install -r requirements.txt
+$ streamlit run app.py --browser.gatherUsageStats False
 ```
 
 Now you can enter the necessary data and selct between **LODES** and **Safegraph** OD generation. The result will be produced in the chosen output folder.
