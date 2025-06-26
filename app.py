@@ -544,7 +544,7 @@ if begin:
                 )
 
                 calibrated_df_output_path = f"{calibrated_output_path}/{day}.csv"
-                calibrated_df.to_csv(calibrated_df_output_path)
+                routing_df.to_csv(calibrated_df_output_path)
                 st.session_state.calibrated_output_path = calibrated_output_path
 
             st.success("Calibrated ODs generated")

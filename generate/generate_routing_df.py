@@ -160,28 +160,25 @@ def get_routed(od_df, desired_date, hourly_graphs_arg, post_calibration=False, p
     global hourly_graphs
     hourly_graphs = hourly_graphs_arg
 
-    if not post_calibration:
-        od_pairs = build_od_pairs(od_df, desired_date)
-    else:
-        od_pairs = build_od_pairs_post_calibration(od_df, desired_date)
-
-    dep_edges = [
-        0,
-        5 * 60,
-        5 * 60 + 30,
-        6 * 60,
-        6 * 60 + 30,
-        7 * 60,
-        7 * 60 + 30,
-        8 * 60,
-        8 * 60 + 30,
-        9 * 60,
-        10 * 60,
-        11 * 60,
-        12 * 60,
-        16 * 60,
-        24 * 60,
-    ]
+    dep_edges = np.array(
+        [
+            0,
+            5 * 60,
+            5 * 60 + 30,
+            6 * 60,
+            6 * 60 + 30,
+            7 * 60,
+            7 * 60 + 30,
+            8 * 60,
+            8 * 60 + 30,
+            9 * 60,
+            10 * 60,
+            11 * 60,
+            12 * 60,
+            16 * 60,
+            24 * 60,
+        ]
+    )
     dep_labels = list(range(len(dep_edges) - 1))
     dep_names = [
         "12am_to_4:59am",
@@ -200,7 +197,28 @@ def get_routed(od_df, desired_date, hourly_graphs_arg, post_calibration=False, p
         "4pm_to_11:59pm",
     ]
 
-    print("Processing OD pairs sequentially")
+    # print("Processing OD pairs sequentially")
+
+    od_df["departure_time"] = pd.to_datetime(od_df["departure_time"])
+
+    # minutes-since-midnight
+    mins = od_df["departure_time"].dt.hour * 60 + od_df["departure_time"].dt.minute
+
+    # which bin each dep falls into
+    bins = np.digitize(mins, dep_edges[1:-1])
+
+    # pick a random minute in each bin
+    lo = dep_edges[bins]
+    hi = dep_edges[bins + 1]
+    rep_mins = np.random.randint(lo, hi)
+
+    if not post_calibration:
+        od_pairs = build_od_pairs(od_df, desired_date)
+    else:
+        # reconstruct rep_dep_time
+        midnight = od_df["departure_datetime"].dt.normalize()
+        od_df["departure_datetime"] = midnight + pd.to_timedelta(rep_mins, unit="m")
+        od_pairs = build_od_pairs_post_calibration(od_df, desired_date)
 
     # Collect all OD information
     origin_lons = []
