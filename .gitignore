@@ -95,4 +95,9 @@ cache/
 tennessee-latest.osm.pbf
 traffic_density.png
 osmnx_files/
-
+algorithms/
+move_OD*/
+routing/
+calibration_copy.ipynb
+calibration_sumo.ipynb
+calibration.ipynb
