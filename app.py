@@ -521,7 +521,9 @@ if begin:
 
                 # getting routed trips and travel times post mssr
                 post_mssr_routing_df = get_routed(
-                    od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs_adjusted
+                    od_df=lodes_output_df,
+                    desired_date=start_date,
+                    hourly_graphs_arg=hourly_graphs_adjusted,
                 )
 
                 # calibrated trips

@@ -285,6 +285,10 @@ def get_routed(od_df, desired_date, hourly_graphs_arg, post_calibration=False, p
 
     # Convert to DataFrame for easier analysis
     routing_df = pd.DataFrame(routing_results)
+    routing_df["origin_lat"] = origin_lats
+    routing_df["origin_lon"] = origin_lons
+    routing_df["dest_lat"] = dest_lats
+    routing_df["dest_lon"] = dest_lons
 
     # Now you can analyze by CBG
     if len(routing_df) > 0:
