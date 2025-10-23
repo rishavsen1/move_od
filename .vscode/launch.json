@@ -3,16 +3,49 @@
   "configurations": [
     {
       "name": "Python: Streamlit",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "module": "streamlit",
       "args": [
         "run",
-        "/home/cc/rishav/contra_costa/OD_generation_scripts/front_app.py",
+        "${workspaceFolder}/app.py",
         "--server.port",
-        "8509"
+        "8510",
+        "--browser.gatherUsageStats",
+        "false"
       ],
-      "cwd": "/home/cc/rishav/contra_costa/OD_generation_scripts",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "python": "${workspaceFolder}/.venv/bin/python"
+    },
+    {
+      "name": "Streamlit blocks",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "${workspaceFolder}/OD_generation_scripts_block/app.py",
+        "--server.port",
+        "8510"
+      ],
+      "cwd": "${workspaceFolder}/OD_generation_scripts_block",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Python",
+      "type": "debugpy",
+      "program": "${file}",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/OD_generation_scripts",
       "env": {
         "PYTHONUNBUFFERED": "1"
       },
