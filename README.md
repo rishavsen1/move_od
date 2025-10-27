@@ -25,7 +25,7 @@
 
 <!-- --- -->
 
-## 🎯 Overview
+## Overview
 
 MOVE-OD is a comprehensive transportation data generation system that creates calibrated origin-destination (OD) trip data for transportation analysis.
 
@@ -40,18 +40,6 @@ MOVE-OD is a comprehensive transportation data generation system that creates ca
 <p align="center">
   <img src="files/moveod_pipeline.png" alt="MoveOD pipeline" width="800" />
 </p>
-
-## 🎯 Overview
-
-MOVE-OD is a comprehensive transportation data generation system that creates calibrated origin-destination (OD) trip data for transportation analysis.
-
-### What It Does
-
-1. **Processes LODES Data** - Employment data from LEHD Origin-Destination Employment Statistics
-2. **Integrates Building Footprints** - Microsoft Global Buildings and OpenStreetMap data
-3. **Performs Routing** - Uses INRIX traffic data or OSM for travel time calculations
-4. **Calibrates with ILP** - Integer Linear Programming for census-accurate trip generation
-5. **Generates OD Trips** - Complete origin-destination trip tables with timing
 
 ## Quickstart
 
@@ -88,27 +76,27 @@ cd frontend && python -m http.server 8080
 ## Using the web app — concise steps
 
 1. Select the State and County you want to generate OD data for.
-2. Choose the available data sources for the region (LODES, SafeGraph, etc.).
+2. Choose the available data sources for the region (Microsoft buildings provides building location without any tags).
 3. (Optional) Supply auxiliary inputs if available (e.g., INRIX speeds or local files) using the UI controls.
-4. Set any processing options exposed in the UI (sample size, years, toggles for Microsoft buildings or SafeGraph).
+4. Choose a date (or range). This parameter is useful when using real time road speeds like INRIX.
 5. Click the "Begin processing" button to start.
 6. Monitor progress in the UI. When finished, download results from the Output section or open the output folder.
 
 <p align="center">
-  <img src="files/Picture1.png" alt="MoveOD interface" width="800" />
+  <img src="files/moveod_interface.png" alt="MoveOD interface" width="800" />
 </p>
 
 Typical runtime: small regions/minimal options ~20 minutes; larger regions ~ 120 minutes.
 
 ## Output location & format
 
-- Default output folder: `move_OD` (or the folder you choose in the UI).
+- Default output folder: `move_OD`.
 - Files are exported as Parquet for compact, fast reads.
-- Typical columns (short):
-  - origin/destination GEOIDs (h_geocode, w_geocode)
+- Typical columns:
+  - origin/destination GEOIDs (origin_geocode, destiantion_geocode)
   - sampled coordinates (home_loc_lat, home_loc_lon, work_loc_lat, work_loc_lon)
-  - go and return times (go_time, return_time) plus string versions
-  - geometry columns (home_geom, work_geom)
+  - departure_time
+  - estimated time to travel to work
 
 ---
 
