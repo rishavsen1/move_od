@@ -44,7 +44,7 @@ def zip_and_download(output_path):
 
     # Add download button to Streamlit
     st.download_button(
-        label="Download All Calibrated Files (ZIP)",
+        label="Download All Calibrated OD Files (ZIP)",
         data=zip_buffer,
         file_name="calibrated_move_od.zip",
         mime="application/zip",
@@ -278,7 +278,7 @@ inrix_path = col3.text_input("INRIX data path (optional)", value="")
 inrix_conversion_path = col4.text_input("INRIX conversion path (optional)", value="")
 
 output_path = f"./move_OD/{state}/{county}/{start_date}_{end_date}"
-st.write(f"Output file path: {output_path}")
+st.write(f"Output file path: {output_path}/calibrated_move_od")
 
 
 safe_df = []
@@ -562,6 +562,8 @@ if begin:
                 "county_geoid_df": county_geoid_df,
                 "logger": logger,
             }
+
+        logger.info("All days generated")
 
 if st.session_state.processing_complete:
 

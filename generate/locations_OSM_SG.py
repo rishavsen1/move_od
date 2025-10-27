@@ -41,7 +41,7 @@ def process_section(miny, maxy, minx, maxx, tags, logger=None):
             print(f"ERROR: {msg}")
 
     retries = 0
-    max_retries = 3  # Increased retries
+    max_retries = 2  # Increased retries
     backoff_time = 0.01  # Start with 2 seconds
 
     while retries <= max_retries:

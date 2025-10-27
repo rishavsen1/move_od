@@ -639,6 +639,6 @@ class LodesComb:
             days.append(day)
             self.logger.info(f"Saved results for day {day}")
 
-        self.logger.info("All days generated")
+        # self.logger.info("All days generated")
 
         return lodes_output_dfs, days, travel_time_to_work_df, census_depart_times_df
