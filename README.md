@@ -179,12 +179,45 @@ BibTeX example:
 }
 ```
 
-<!--
-## Troubleshooting (UI-focused)
+## Troubleshooting & Performance
 
-- If the UI fails to start, check your Python environment and installed packages.
-- If a job stalls, try a smaller sample size or check the output/temporary folder used by the web app.
-- For data-specific problems (missing shapefiles, missing LODES/SafeGraph files), place the required files where the UI expects them or follow the prompts in the app. -->
+**Streamlit Compatibility**: The tool automatically detects when running under Streamlit and uses appropriate logging for parallel processing.
+
+**Harmless Warning**: You may see this warning when using parallel processing in Streamlit:
+
+```
+WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext!
+This warning can be ignored when running in bare mode.
+```
+
+This is **expected and harmless** - it occurs because worker processes don't have access to Streamlit's context. The parallel processing still works correctly.
+
+**Force Sequential Mode**: If you prefer to disable parallel processing entirely, set:
+
+```bash
+export FORCE_SEQUENTIAL_OSM=true
+```
+
+**OSM API Timeouts**: OpenStreetMap queries may occasionally timeout due to API rate limiting. The tool includes:
+
+- Automatic retry logic with exponential backoff (2s, 4s, 8s)
+- Up to 3 retry attempts per section
+- Progress tracking with `tqdm` in sequential mode
+- Graceful fallback from parallel to sequential if issues occur
+
+If OSM queries consistently fail:
+
+1. Reduce the geographic area
+2. Run during off-peak hours
+3. Check your internet connection
+4. Wait a few minutes between retries if you've made many recent requests
+
+**General Issues**:
+
+- If the UI fails to start, check your Python environment and installed packages
+- If a job stalls, restart the streamlit app
+- For data problems (missing shapefiles, LODES files), place required files where the UI expects them
+
 <!--
 ## Contributing (brief)
 

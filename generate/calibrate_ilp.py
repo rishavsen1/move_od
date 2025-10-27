@@ -515,7 +515,6 @@ def post_calibrating_assignment(calibrated_trips, origin_buildings, dest_buildin
                 tmp.index = grp.index
                 tmp_latlon = tmp["location"].apply(lambda loc: pd.Series({"origin_lat": loc[0], "origin_lon": loc[1]}))
                 tmp = tmp_latlon  # Keep this line, remove the next one
-                print("Using MS building location")
         else:
             # sample with replacement
             samp = houses.sample(n=len(grp), replace=True).reset_index(drop=True)
@@ -536,7 +535,6 @@ def post_calibrating_assignment(calibrated_trips, origin_buildings, dest_buildin
                 lambda loc: pd.Series({"destination_lat": loc[0], "destination_lon": loc[1]})
             )
             tmp = tmp_latlon  # Keep this, remove the next line
-            print("Using MS building location")
         else:
             samp = offices.sample(n=len(grp), replace=True).reset_index(drop=True)
             samp.index = grp.index
