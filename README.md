@@ -1,6 +1,6 @@
 <!-- README: user-focused web app guide. Short, practical, avoids backend/API internals. -->
 
-**A modern web-based Origin-Destination transportation data generation system**
+**MoveOD: Synthesizing Origin-Destination Commute Distribution from U.S. Census Data**
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com)
