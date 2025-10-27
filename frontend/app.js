@@ -173,8 +173,12 @@ async function handleBeginProcessing() {
     tiger_shapefile_year: elements.tigerYear.value,
     inrix_path: elements.inrixPath.value || null,
     inrix_conversion_path: elements.inrixConversionPath.value || null,
-    use_safegraph: elements.useSafegraph.checked,
-    use_ms_buildings: elements.useMsBuildings.checked,
+    use_safegraph: elements.useSafegraph
+      ? elements.useSafegraph.checked
+      : false,
+    use_ms_buildings: elements.useMsBuildings
+      ? elements.useMsBuildings.checked
+      : true,
     od_option: "Origin and Destination in same County",
   };
 
