@@ -45,7 +45,18 @@ You can access the full paper here: [ArXiV](https://arxiv.org/abs/2510.18858)
 
 ## Quickstart
 
-### 1. Install Dependencies
+### 1. Configure Census API Key
+
+Move-OD requires a free Census API key to download LODES and geographic data.
+
+1. Get your free API key from: [Census API Key Signup](https://api.census.gov/data/key_signup.html)
+2. Copy the config template:
+   ```bash
+   cp .env.example .env
+   ```
+3. Edit `.env` and replace `YOUR_CENSUS_API_KEY_HERE` with your actual key
+
+### 2. Install Dependencies
 
 ```bash
 cd move_od
@@ -53,7 +64,7 @@ pip install -r requirements.txt
 pip install -r backend/requirements.txt
 ```
 
-### 2. Start the Application
+### 3. Start the Application
 
 **Option A: Using Streamlit (provides step by step tracking) (recommended)**
 

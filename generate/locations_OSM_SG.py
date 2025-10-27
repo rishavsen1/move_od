@@ -16,8 +16,8 @@ def process_section(miny, maxy, minx, maxx, tags, logger):
     import time
 
     retries = 0
-    max_retries = 5
-    backoff_time = 1  # Initial backoff time in seconds
+    max_retries = 1
+    backoff_time = 0  # Initial backoff time in seconds
 
     while retries < max_retries:
         try:
@@ -94,7 +94,7 @@ class LocationsOSMSG:
     # def func(row):
     #     str(Point(gpd.points_from_xy(row.INTPTLAT, row.INTPTLON)[0]))
 
-    def find_locations_OSM(self, use_parallel=True):
+    def find_locations_OSM(self, use_parallel=False):
         self.logger.info("Running locations_OSM_SG.py func")
 
         # Filter county data based on the OD option
