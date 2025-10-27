@@ -275,7 +275,7 @@ tiger_shapefile_year = col2.text_input("Enter TIGER shapefile year (Latest year 
 inrix_path = col3.text_input("INRIX data path", value=f"{inrix_folder_path}/Hamilton-County-INRIX.csv")
 inrix_conversion_path = col4.text_input("INRIX conversion path", value=f"{inrix_folder_path}/XD_Identification.csv")
 
-output_path = f"./move_OD2/{state}/{county}/{start_date}_{end_date}"
+output_path = f"./move_OD/{state}/{county}/{start_date}_{end_date}"
 st.write(f"Output file path: {output_path}")
 
 

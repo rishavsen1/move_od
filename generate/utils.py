@@ -17,7 +17,9 @@ import zipfile
 import subprocess
 from io import StringIO
 from multiprocessing import cpu_count, Pool
+from tqdm import tqdm
 import hashlib
+
 
 from generate.config import CENSUS_API_KEY
 
@@ -253,7 +255,7 @@ def download_shapefile(logger, url, compressed_path):
         logger.info(f"File downloaded and saved as: {compressed_path}")
 
     else:
-        logger.error(f"Failed to download the file: Status code {response.status_code}")
+        logger.error(f"Failed to download the shapefile: Status code {response.status_code}")
 
 
 def download_lodes(logger, state, state_abbr, lodes_code, year):
@@ -272,7 +274,7 @@ def download_lodes(logger, state, state_abbr, lodes_code, year):
 
 def download_ms_buildings(logger, state, state_stripped):
     type = "zip"
-    url = f"https://usbuildingdata.blob.core.windows.net/usbuildings-v2/{state_stripped}.geojson.zip"
+    url = f"https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/{state_stripped}.geojson.zip"
     compressed_path = f"./data/states/{state}/{state_stripped}.geojson.zip"
     decompressed_path = f"./data/states/{state}/"  # Path to the directory to extract files
     download_and_decompress(type, logger, url, compressed_path, decompressed_path)
@@ -319,7 +321,7 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
         return True
 
     else:
-        logger.error(f"Failed to download the file: Status code {response.status_code}")
+        logger.error(f"Failed to download the LODES file: Status code {response.status_code}")
         return False
 
 

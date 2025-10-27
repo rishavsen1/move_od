@@ -1,109 +1,195 @@
-# Move-OD
+<!-- README: user-focused web app guide. Short, practical, avoids backend/API internals. -->
 
-We can generate origin-destination (OD) pairs for a given county or city, from the releveant datasets about the region. The geographic areas are divided into census tracts(larger, poor resolution) and census block groups (CBGs) (smaller, better resolution). We find the movement matrix of people travelling for jobs (LODES), or general purposes (Safegraph).
+**A modern web-based Origin-Destination transportation data generation system**
 
-<!--
-## The data
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-1. Geographic data
+<!-- ---
 
-The geographic data of Hamilton county defines the area and boundaries of the census tracts and CBGs. It also provides unique GEOIDs for each zone under consideration, which we can further use to find relevant regions in other datasets.
+## 📖 Table of Contents
 
-2. People movement`<br>`
-   a. [LODES dataset](https://lehd.ces.census.gov/data/)`<br>`
-   b. Safegraph dataset (our data is for Jan 2021-Mar2021)
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Documentation](#documentation)
+- [Installation](#installation)
+- [Usage](#usage)
+- [API Reference](#api-reference)
+- [Deployment](#deployment)
+- [Migration from Streamlit](#migration-from-streamlit)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing) -->
 
-These provide the information about the movement of people (the number of people moving, and their origin and destination CBG).
+<!-- --- -->
 
-3. Residential and Work locations
+## 🎯 Overview
 
-   The locations of residential and commercial(work) areas are obtained from OpenStreetMaps(OSM). They are obtained by using the [OSM Accomodation tags](https://wiki.openstreetmap.org/wiki/Key:building#Accommodation) and the python library OSMNX.
+MOVE-OD is a comprehensive transportation data generation system that creates calibrated origin-destination (OD) trip data for transportation analysis.
 
-   The work locations are obtained as a combination of the tags [commercial](https://wiki.openstreetmap.org/wiki/Key:building#Commercial), [civic/amenity](https://wiki.openstreetmap.org/wiki/Key:building#Civic/amenity), and the Safegraph POI (point of interest) locations.
+### What It Does
 
-4. Microsoft Buildings dataset (complements to OSM locations)
+1. **Processes LODES Data** - Employment data from LEHD Origin-Destination Employment Statistics
+2. **Integrates Building Footprints** - Microsoft Global Buildings and OpenStreetMap data
+3. **Performs Routing** - Uses INRIX traffic data or OSM for travel time calculations
+4. **Calibrates with ILP** - Integer Linear Programming for census-accurate trip generation
+5. **Generates OD Trips** - Complete origin-destination trip tables with timing
 
-   These are the locations of all buildings in Hamilton county, obtained from [Microsoft Building Footprints](https://github.com/Microsoft/USBuildingFootprints), and are **not labelled** as home/work places. These locations are used in lieu of OSM labelled locations only in case the concerned CBG has no home/work locations from OSM.
+<p align="center">
+  <img src="files/moveod_pipeline.png" alt="MoveOD pipeline" width="800" />
+</p>
 
-   The data extraction is done as in [read_ms_buildings.py](OD_generation_scripts/read_ms_buildings.py).
+## 🎯 Overview
 
-## Deriving the OD matrix
+MOVE-OD is a comprehensive transportation data generation system that creates calibrated origin-destination (OD) trip data for transportation analysis.
 
-We intend to find the Origin Destination (OD) matrix for Hamilton county. The home location acts as the **origin**, while the work location acts as the **destination**. It is obtained as a combination of the home location, work location, travel start time, and their return time. It is found by uniform sampling across the home and commercial locations.
+### What It Does
 
-**Note**: A random seed of 42 is used for all the random samples.
+1. **Processes LODES Data** - Employment data from LEHD Origin-Destination Employment Statistics
+2. **Integrates Building Footprints** - Microsoft Global Buildings and OpenStreetMap data
+3. **Performs Routing** - Uses INRIX traffic data or OSM for travel time calculations
+4. **Calibrates with ILP** - Integer Linear Programming for census-accurate trip generation
+5. **Generates OD Trips** - Complete origin-destination trip tables with timing
 
-There are a few assumptions made to help in the process of sampleing the data:
+## Quickstart
 
-1. For the LODES and Safegraph data, we find the number of people travelling between each OD pair, and randomly sample the home and work locations from the OSM locations (or Microsoft Buildings if needed).
-2. The travel start time(go_time) is sampled randomly from 7AM to 9AM (at 15min intervals)
-3. The return time is sampled randomly from 4PM to 6PM (at 15min intervals)
+### 1. Install Dependencies
 
-For example if an OD pair has 50 people travelling among them, then we sample 50 home and 50 work locations and randomly choose 50 start and return times in the manner described. -->
+```bash
+cd move_od
+pip install -r requirements.txt
+pip install -r backend/requirements.txt
+```
 
-## Running the pipeline
+### 2. Start the Application
 
-(This was run on python 3.10 on an Ubuntu 22.14 machine)
+**Option A: Using the startup script (recommended)**
 
-Install the requirements using `pip install -r requirements.txt`.
+```bash
+./start_webapp.sh  # Linux/Mac
+# or
+start_webapp.bat   # Windows
+```
 
-After installing Streamlit, run the command:
+**Option B: Manual start**
+
+```bash
+# Terminal 1: Backend
+cd backend && python app.py
+
+# Terminal 2: Frontend
+cd frontend && python -m http.server 8080
+```
+
+---
+
+## Using the web app — concise steps
+
+1. Select the State and County you want to generate OD data for.
+2. Choose the available data sources for the region (LODES, SafeGraph, etc.).
+3. (Optional) Supply auxiliary inputs if available (e.g., INRIX speeds or local files) using the UI controls.
+4. Set any processing options exposed in the UI (sample size, years, toggles for Microsoft buildings or SafeGraph).
+5. Click the "Begin processing" button to start.
+6. Monitor progress in the UI. When finished, download results from the Output section or open the output folder.
+
+<p align="center">
+  <img src="files/Picture1.png" alt="MoveOD interface" width="800" />
+</p>
+
+Typical runtime: small regions/minimal options ~20 minutes; larger regions ~ 120 minutes.
+
+## Output location & format
+
+- Default output folder: `move_OD` (or the folder you choose in the UI).
+- Files are exported as Parquet for compact, fast reads.
+- Typical columns (short):
+  - origin/destination GEOIDs (h_geocode, w_geocode)
+  - sampled coordinates (home_loc_lat, home_loc_lon, work_loc_lat, work_loc_lon)
+  - go and return times (go_time, return_time) plus string versions
+  - geometry columns (home_geom, work_geom)
+
+---
+
+### 3. Access the Application
+
+Open your browser to: **http://localhost:8080**
+
+API Documentation: **http://localhost:8000/docs**
+
+<!-- ---
+
+## Architecture
 
 ```
-$ streamlit run app.py --browser.gatherUsageStats False
-```
-
-Now you can select the State, County and if you have INRIX road speeds, you may provide them. The result will be produced in the display output folder under `/calibrated_move_od`.
-
-## Explanation of the generated OD data
-
-The generated data has been converted to parquet and is available in the folder you selected to be the output folder. ( by deafult: `generated_OD`)
-
-<!--
-Each row in either dataset represents a single trip by one person. In the case of lodes dataset, the trip represent movement to the job location and then back to home. Here are the key columns.
-
-The columns(with their datatypes) are:
-
-- h_geocode(string): The GEOID of the person's home CBG
-- w_geocode(string): The GEOID of the person's work CBG
-- total_jobs(float): the total number of people moving for jobs between the h_geocode and w_geocode (its sum gives us the total number of people moving; can be ignored for simplicity purposes).
-- Note in case of the safegraph data the corresponding column is frequency. It shows the cumulative movement between the two block groups.
-- home_loc_lat(float): latitude of chosen home location
-- home_loc_lon(float): longitude of chosen home location
-- work_loc_lat(float): latitude of chosen work location
-- work_loc_lon(float): longitude of chosen work location
-- go_time/time_0(datetime.time): time the person leaves the home - in 24 hour format
-- return_time/time_1(datetime.time): time the person leaves the workplace - in 24 hour format
-- go_time_str/time_0_str(string): time the person leaves the home - in 24 hour format (as a string)
-- return_time_str/time_1_str(string): time the person leaves the workplace - in 24 hour format (as a string)
-- home_geom(Point): shapely point of home location
-- work_geom(Point): shapely point of work location -->
-<!--
-For LODES, the times are written as time_0, time_1 ... because there may be additional time windows that we may want to add in the OD generation.
-
-LODES OD dataset example:
-![LODES example](plots/LODES_cols.png)
-
-Safegraph OD dataset example:
-![Safegraph example](plots/Sg_cols.png)
-
-Here's a time distribution of the people moving from LODES data (Hamilton county, TN, USA). The example data has a time step of 1 min. The start time is chosen from 7am to 9am , and return times are chosen as 4pm to 6pm.
-![lodes poeple movement going time](plots/ham_lodes_time_0.png)
-![lodes poeple movement return time](plots/ham_lodes_time_1.png)
-
-Time distribution of the people moving from Safegaprh data (Chattanooga, TN, USA). The times are chosen to be from 7am to 9pm, to model the flow of people across an entire day.
-
-![Safegraph poeple movement going time](plots/ham_sg_go.png)
-![Safegraph poeple movement return time](plots/ham_sg_return.png)
-
-## Open trip Planner setup
-
-Required to get static travel times for ODs
-( only for Chattanooga, TN)
-
-```
-git clone https://github.com/rishavsen1/otp-carta.git
-docker run -it \
-  --name otp-carta-container \
-  -p 8080:8080 otp-carta java -Xmx3G -jar otp-1.5.0-shaded.jar --build /app/otp --inMemory
+┌─────────────┐
+│   Browser   │
+│  Port 8080  │
+└──────┬──────┘
+       │
+       │ HTTP/AJAX
+       │
+   ┌───┴────┐
+   │        │
+   ▼        ▼
+┌──────┐ ┌──────┐
+│Front-│ │Back- │
+│ end  │◄┤ end  │
+│(HTML)│ │(API) │
+└──────┘ └───┬──┘
+             │
+        ┌────┼────┐
+        ▼    ▼    ▼
+     [Data][Jobs][Process]
 ``` -->
+
+<!-- 3. Open the UI in your browser (Streamlit will show the local URL, usually http://localhost:8501). -->
+
+<!-- If you want a quick preview of a Parquet file in Python:
+
+```python
+import pandas as pd
+df = pd.read_parquet('generated_OD/sample.parquet')
+print(df.head()) -->
+
+## Citation
+
+If you use Move-OD for academic work or reports, please cite the project. Replace placeholders with final paper details if available.
+
+BibTeX example:
+
+```bibtex
+@misc{sen2025moveodsynthesizingorigindestinationcommute,
+      title={MoveOD: Synthesizing Origin-Destination Commute Distribution from U.S. Census Data},
+      author={Rishav Sen and Abhishek Dubey and Ayan Mukhopadhyay and Samitha Samaranayake and Aron Laszka},
+      year={2025},
+      eprint={2510.18858},
+      archivePrefix={arXiv},
+      primaryClass={cs.CY},
+      url={https://arxiv.org/abs/2510.18858},
+}
+```
+
+<!--
+## Troubleshooting (UI-focused)
+
+- If the UI fails to start, check your Python environment and installed packages.
+- If a job stalls, try a smaller sample size or check the output/temporary folder used by the web app.
+- For data-specific problems (missing shapefiles, missing LODES/SafeGraph files), place the required files where the UI expects them or follow the prompts in the app. -->
+<!--
+## Contributing (brief)
+
+Small, focused improvements are welcome. Open a GitHub issue to discuss larger changes first. For UI changes, update the Streamlit app files and add small tests or examples where appropriate. -->
+
+## Pipeline
+
+<p align="center">
+  <img src="files/moveod_plots.png" alt="Plots" width="800" />
+</p>
+
+## License
+
+MIT — see the `LICENSE` file.
+
+---

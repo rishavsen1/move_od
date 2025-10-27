@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Backend Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      .success {
+        color: green;
+        font-weight: bold;
+      }
+      .error {
+        color: red;
+        font-weight: bold;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 10px;
+        border-radius: 5px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MOVE-OD Backend API Test</h1>
+
+    <div id="status"></div>
+
+    <h2>Test Endpoints:</h2>
+    <button onclick="testHealth()">Test Health Check</button>
+    <button onclick="testStates()">Test States API</button>
+
+    <h3>Results:</h3>
+    <div id="results"></div>
+
+    <script>
+      const API_URL = "http://localhost:8000";
+
+      async function testHealth() {
+        try {
+          const response = await fetch(`${API_URL}/`);
+          const data = await response.json();
+          showResult("Health Check", "success", JSON.stringify(data, null, 2));
+        } catch (error) {
+          showResult("Health Check", "error", error.message);
+        }
+      }
+
+      async function testStates() {
+        try {
+          const response = await fetch(`${API_URL}/api/states`);
+          const data = await response.json();
+          const summary = `Found ${data.states.length} states. First state: ${data.states[0].name}`;
+          showResult(
+            "States API",
+            "success",
+            summary + "\n\n" + JSON.stringify(data.states.slice(0, 2), null, 2)
+          );
+        } catch (error) {
+          showResult("States API", "error", error.message);
+        }
+      }
+
+      function showResult(test, status, message) {
+        const results = document.getElementById("results");
+        const className = status === "success" ? "success" : "error";
+        results.innerHTML = `
+                <h4 class="${className}">${test}: ${status.toUpperCase()}</h4>
+                <pre>${message}</pre>
+            `;
+      }
+
+      // Auto-test on load
+      window.onload = async () => {
+        document.getElementById("status").innerHTML =
+          "<p>Testing backend connection...</p>";
+        try {
+          await testHealth();
+          document.getElementById("status").innerHTML =
+            '<p class="success">✅ Backend is running!</p>';
+        } catch (error) {
+          document.getElementById(
+            "status"
+          ).innerHTML = `<p class="error">❌ Backend connection failed: ${error.message}</p>`;
+        }
+      };
+    </script>
+  </body>
+</html>

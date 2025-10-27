@@ -12,18 +12,54 @@ from tqdm import tqdm
 
 
 def process_section(miny, maxy, minx, maxx, tags, logger):
+    """Process a geographic section and return building geometries"""
+    import time
+
     retries = 0
-    while retries < 5:
+    max_retries = 5
+    backoff_time = 1  # Initial backoff time in seconds
+
+    while retries < max_retries:
         try:
-            logger.info(f"Processing section: {miny}, {maxy}, {minx}, {maxx}")
+            if retries > 0:
+                logger.info(
+                    f"Retry {retries}/{max_retries} for section: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}"
+                )
+                # Exponential backoff
+                time.sleep(backoff_time)
+                backoff_time *= 2
+            else:
+                logger.info(f"Processing section: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}")
+
+            # Query OpenStreetMap with timeout
             geoms = ox.features_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
+
+            # Ensure required columns exist
+            if "geometry" not in geoms.columns or "building" not in geoms.columns:
+                logger.warning(f"Section missing required columns: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}")
+                return None
+
             geoms = geoms[["geometry", "building"]]
-            logger.info(f"Successfully processed section: {miny}, {maxy}, {minx}, {maxx}")
+            logger.info(
+                f"Successfully processed section: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f} - {len(geoms)} buildings"
+            )
             return geoms
+
+        except KeyboardInterrupt:
+            logger.error("Process interrupted by user")
+            raise
+        except TimeoutError:
+            logger.error(f"Timeout in section {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}")
+            retries += 1
         except Exception as e:
-            logger.error(f"Exception in section {miny}, {maxy}, {minx}, {maxx}: {e}")
-        retries += 1
-    logger.error(f"Failed to process section after 5 retries: {miny}, {maxy}, {minx}, {maxx}")
+            logger.error(
+                f"Exception in section {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}: {type(e).__name__}: {e}"
+            )
+            retries += 1
+
+    logger.error(
+        f"Failed to process section after {max_retries} retries: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}"
+    )
     return None
 
 
@@ -58,7 +94,7 @@ class LocationsOSMSG:
     # def func(row):
     #     str(Point(gpd.points_from_xy(row.INTPTLAT, row.INTPTLON)[0]))
 
-    def find_locations_OSM(self):
+    def find_locations_OSM(self, use_parallel=True):
         self.logger.info("Running locations_OSM_SG.py func")
 
         # Filter county data based on the OD option
@@ -81,25 +117,79 @@ class LocationsOSMSG:
             func_args = [(s[0], s[1], s[2], s[3], {"building": True}, self.logger) for s in splits]
 
             results = []
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                future_to_split = {executor.submit(process_section, *args): args for args in func_args}
 
-                # Use tqdm for progress tracking
-                for future in tqdm(as_completed(future_to_split), total=len(func_args), desc="Processing sections"):
+            if use_parallel:
+                self.logger.info(f"Processing {len(func_args)} sections with {num_workers} workers (parallel)...")
+
+                # Use ProcessPoolExecutor with timeout and better error handling
+                try:
+                    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                        # Submit all tasks
+                        future_to_args = {executor.submit(process_section, *args): args for args in func_args}
+
+                        # Process completed futures with timeout
+                        completed = 0
+                        for future in as_completed(future_to_args, timeout=600):  # 10 min timeout per task
+                            completed += 1
+                            try:
+                                result = future.result(timeout=60)  # 1 min to get result
+                                if result is not None:
+                                    results.append(result)
+                                    self.logger.info(f"Progress: {completed}/{len(func_args)} sections completed")
+                                else:
+                                    self.logger.warning(f"Section {future_to_args[future]} returned None")
+                            except TimeoutError:
+                                self.logger.error(f"Timeout processing section {future_to_args[future]}")
+                                future.cancel()
+                            except Exception as e:
+                                self.logger.error(f"Error processing section {future_to_args[future]}: {e}")
+
+                        self.logger.info(
+                            f"Completed processing {completed} sections, got {len(results)} valid results"
+                        )
+
+                except TimeoutError:
+                    self.logger.error("Overall timeout exceeded waiting for sections to complete")
+                    self.logger.info("Falling back to sequential processing...")
+                    use_parallel = False  # Fall back to sequential
+                except Exception as e:
+                    self.logger.error(f"Fatal error in multiprocessing: {e}")
+                    self.logger.info("Falling back to sequential processing...")
+                    use_parallel = False  # Fall back to sequential
+                finally:
+                    # Ensure all processes are terminated
                     try:
-                        result = future.result()
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    except:
+                        pass
+
+            # Sequential processing fallback
+            if not use_parallel or len(results) == 0:
+                self.logger.info(f"Processing {len(func_args)} sections sequentially...")
+                results = []
+                for i, args in enumerate(func_args):
+                    self.logger.info(f"Processing section {i+1}/{len(func_args)}...")
+                    try:
+                        result = process_section(*args)
                         if result is not None:
                             results.append(result)
+                            self.logger.info(f"Section {i+1}/{len(func_args)} completed successfully")
+                        else:
+                            self.logger.warning(f"Section {i+1}/{len(func_args)} returned None")
                     except Exception as e:
-                        self.logger.error(f"Error processing section {future_to_split[future]}: {e}")
+                        self.logger.error(f"Error processing section {i+1}/{len(func_args)}: {e}")
+
+                self.logger.info(f"Sequential processing completed, got {len(results)} valid results")
 
             # Combine results and save to file
             if results:
+                self.logger.info(f"Combining {len(results)} building sections...")
                 buildings = pd.concat(results, ignore_index=True)
                 buildings.to_file(buildings_file, driver="GeoJSON")
+                self.logger.info(f"Saved {len(buildings)} buildings to {buildings_file}")
             else:
                 self.logger.error("No results were obtained from multiprocessing.")
-                return None
+                return None, None, False
 
         # Determine UTM zone
         mean_lon = minx + (maxx - minx) / 2
