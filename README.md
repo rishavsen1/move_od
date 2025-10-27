@@ -55,7 +55,13 @@ pip install -r backend/requirements.txt
 
 ### 2. Start the Application
 
-**Option A: Using the startup script (recommended)**
+**Option A: Using Streamlit (provides step by step tracking) (recommended)**
+
+```bash
+streamlit run app.py
+```
+
+**Option B: Using startup script**
 
 ```bash
 ./start_webapp.sh  # Linux/Mac
@@ -63,7 +69,8 @@ pip install -r backend/requirements.txt
 start_webapp.bat   # Windows
 ```
 
-**Option B: Manual start**
+<!--
+**Option C: Manual start**
 
 ```bash
 # Terminal 1: Backend
@@ -71,7 +78,7 @@ cd backend && python app.py
 
 # Terminal 2: Frontend
 cd frontend && python -m http.server 8080
-```
+``` -->
 
 ---
 

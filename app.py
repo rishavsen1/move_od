@@ -272,8 +272,10 @@ inrix_folder_path = "./data/inrix"
 lodes_year = col1.text_input("Enter LODES data year (Latest year is 2022):", value=("2022"))
 
 tiger_shapefile_year = col2.text_input("Enter TIGER shapefile year (Latest year is 2024):", value=("2024"))
-inrix_path = col3.text_input("INRIX data path", value=f"{inrix_folder_path}/Hamilton-County-INRIX.csv")
-inrix_conversion_path = col4.text_input("INRIX conversion path", value=f"{inrix_folder_path}/XD_Identification.csv")
+# inrix_path = col3.text_input("INRIX data path", value=f"{inrix_folder_path}/Hamilton-County-INRIX.csv")
+# inrix_conversion_path = col4.text_input("INRIX conversion path", value=f"{inrix_folder_path}/XD_Identification.csv")
+inrix_path = col3.text_input("INRIX data path (optional)", value="")
+inrix_conversion_path = col4.text_input("INRIX conversion path (optional)", value="")
 
 output_path = f"./move_OD/{state}/{county}/{start_date}_{end_date}"
 st.write(f"Output file path: {output_path}")

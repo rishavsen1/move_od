@@ -112,7 +112,7 @@ class LocationsOSMSG:
         if os.path.exists(buildings_file):
             buildings = gpd.read_file(buildings_file)
         else:
-            num_workers = min(multiprocessing.cpu_count(), 12)
+            num_workers = max(multiprocessing.cpu_count() - 1, 1)
             splits = self.split_bbox(miny, maxy, minx, maxx, num_workers)
             func_args = [(s[0], s[1], s[2], s[3], {"building": True}, self.logger) for s in splits]
 

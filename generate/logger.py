@@ -20,9 +20,9 @@ class Logger:
             file_handler = FileHandler(log_file)
             file_handler.setLevel(level)
 
-            # Create a console handler for output to stderr
+            # Create a console handler for output to stdout/stderr
             console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.DEBUG)
+            console_handler.setLevel(level)  # Match the logger level
 
             # Define the log format
             formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -32,6 +32,14 @@ class Logger:
             # Add the handlers to the logger
             self.logger.addHandler(file_handler)
             self.logger.addHandler(console_handler)
+
+            # Ensure logs are flushed immediately
+            import sys
+
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(line_buffering=True)
+            if hasattr(sys.stderr, "reconfigure"):
+                sys.stderr.reconfigure(line_buffering=True)
 
         # Log system stats only if no handlers were previously attached
         if len(self.logger.handlers) == 2:
