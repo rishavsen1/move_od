@@ -29,6 +29,8 @@
 
 MOVE-OD is a comprehensive transportation data generation system that creates calibrated origin-destination (OD) trip data for transportation analysis.
 
+You can access the full paper here: [ArXiV](https://arxiv.org/abs/2510.18858)
+
 ### What It Does
 
 1. **Processes LODES Data** - Employment data from LEHD Origin-Destination Employment Statistics
