@@ -1,23 +1,24 @@
 # Core data processing
 pandas==2.1.3
-numpy==1.26.0
-geopandas==0.14.0
-shapely==2.0.0
+numpy==1.26.2
+geopandas==0.14.1
+shapely==2.0.2
 
 # Geospatial and mapping
-osmnx==1.7.0
-networkx==3.2.0
-pyproj==3.6.0
-fiona==1.9.0
+osmnx==1.7.1
+networkx==3.2.1
+pyproj==3.6.1
+fiona==1.9.5
 
 # Optimization (for ILP calibration)
-PuLP==2.7.0
+PuLP==3.1.1
 
 # Scientific computing
-scipy==1.11.0
+scipy==1.11.3
 
 # Streamlit app
-streamlit==1.45.0
+streamlit==1.45.1
+streamlit_folium==0.25.0
 
 # Utilities
 tqdm==4.64.0
@@ -25,11 +26,12 @@ requests==2.31.0
 
 # Parallel processing
 dask==2023.11.0
+dask-geopandas==0.3.1
 
 # System monitoring (for logging)
-psutil==5.9.0
+psutil==5.9.6
 
 # Optional: for async web requests (accessibility estimation)
-aiohttp==3.9.0
+aiohttp==3.11.18
 
 python-dotenv==1.1.1
