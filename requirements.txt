@@ -35,3 +35,4 @@ psutil==5.9.6
 aiohttp==3.11.18
 
 python-dotenv==1.1.1
+scikit-learn==1.5.0
