@@ -211,45 +211,67 @@ class LocationsOSMSG:
                     except:
                         pass
 
+                # Combine results and save to file
+                if results:
+                    self.logger.info(f"Combining {len(results)} building sections...")
+                    buildings = pd.concat(results, ignore_index=True)
+                    buildings.to_file(buildings_file, driver="GeoJSON")
+                    self.logger.info(f"Saved {len(buildings)} buildings to {buildings_file}")
+                else:
+                    self.logger.error("No results were obtained from multiprocessing.")
+                    return None, None, False
+
             # Sequential processing fallback
             if not use_parallel or len(results) == 0:
-                self.logger.info(f"Processing {len(func_args)} sections sequentially...")
-                results = []
-                # Use tqdm for progress tracking in sequential mode
-                iterable = tqdm(
-                    enumerate(func_args),
-                    total=len(func_args),
-                    desc="Processing OSM sections",
+
+                self.logger.info(
+                    f"Processing entire area as single section: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}"
                 )
 
-                for i, args in iterable:
-                    self.logger.info(f"Processing section {i+1}/{len(func_args)}...")
-                    try:
-                        result = process_section(*args)
-                        if result is not None:
-                            results.append(result)
-                            self.logger.info(
-                                f"Section {i+1}/{len(func_args)} completed successfully - {len(result)} buildings"
-                            )
-                        else:
-                            self.logger.warning(f"Section {i+1}/{len(func_args)} returned None")
-                    except KeyboardInterrupt:
-                        self.logger.error("Processing interrupted by user")
-                        raise
-                    except Exception as e:
-                        self.logger.error(f"Error processing section {i+1}/{len(func_args)}: {e}")
+                result = process_section(miny, maxy, minx, maxx, {"building": True}, self.logger)
 
-                self.logger.info(f"Sequential processing completed, got {len(results)} valid results")
+                if result is not None:
+                    buildings = result
+                    buildings.to_file(buildings_file, driver="GeoJSON")
+                    self.logger.info(f"Saved {len(buildings)} buildings to {buildings_file}")
+                else:
+                    self.logger.error("Processing returned None - no buildings found.")
+                    return None, None, False
 
-            # Combine results and save to file
-            if results:
-                self.logger.info(f"Combining {len(results)} building sections...")
-                buildings = pd.concat(results, ignore_index=True)
-                buildings.to_file(buildings_file, driver="GeoJSON")
-                self.logger.info(f"Saved {len(buildings)} buildings to {buildings_file}")
-            else:
-                self.logger.error("No results were obtained from multiprocessing.")
-                return None, None, False
+            # except KeyboardInterrupt:
+            #     self.logger.error("Processing interrupted by user")
+            #     raise
+            # except Exception as e:
+            #     self.logger.error(f"Error processing bounding box: {e}")
+            #     return None, None, False
+
+            # self.logger.info(f"Processing {len(func_args)} sections sequentially...")
+            # results = []
+            # # Use tqdm for progress tracking in sequential mode
+            # iterable = tqdm(
+            #     enumerate(func_args),
+            #     total=len(func_args),
+            #     desc="Processing OSM sections",
+            # )
+
+            # for i, args in iterable:
+            #     self.logger.info(f"Processing section {i+1}/{len(func_args)}...")
+            #     try:
+            #         result = process_section(*args)
+            #         if result is not None:
+            #             results.append(result)
+            #             self.logger.info(
+            #                 f"Section {i+1}/{len(func_args)} completed successfully - {len(result)} buildings"
+            #             )
+            #         else:
+            #             self.logger.warning(f"Section {i+1}/{len(func_args)} returned None")
+            #     except KeyboardInterrupt:
+            #         self.logger.error("Processing interrupted by user")
+            #         raise
+            #     except Exception as e:
+            #         self.logger.error(f"Error processing section {i+1}/{len(func_args)}: {e}")
+
+            # self.logger.info(f"Sequential processing completed, got {len(results)} valid results")
 
         # Determine UTM zone
         mean_lon = minx + (maxx - minx) / 2
