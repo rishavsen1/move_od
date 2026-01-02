@@ -213,7 +213,7 @@ states, state_fips, counties_in_state, county_fips = get_states_and_counties()
 with col1:
     state = st.selectbox("State", options=list(states.keys()), index=42)
 with col2:
-    county = st.selectbox("County", options=sorted(counties_in_state[state]), index=32)
+    county = st.selectbox("County", options=sorted(counties_in_state[state]), index=0)
 with col3:
     st.session_state.dates = st.date_input(
         "Enter date range",
