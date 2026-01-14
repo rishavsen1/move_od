@@ -307,7 +307,7 @@ def ipf_with_time_penalty(trips_o, od_probs, p_bo, max_iter=30):
 
 def _solve_for_origin(args):
     """Helper function to solve ILP for a single origin, designed for parallel execution."""
-    o, cand, od_distribution, p_dict, q_dict, w_dict, lodes_dict, alpha = args
+    o, trips_o, od_distribution, p_dict, q_dict, w_dict, lodes_dict, alpha = args
     import pulp
     import numpy as np
     import pandas as pd
@@ -319,7 +319,7 @@ def _solve_for_origin(args):
     if N_o == 0:
         return None, "skipped_no_trips"
 
-    trips_o = cand[cand.origin_geoid == o].copy()
+    # trips_o is now pre-filtered, no need to filter again
     if len(trips_o) == 0:
         return None, "skipped_no_candidates"
 
@@ -395,9 +395,9 @@ def _solve_for_origin(args):
     try:
         try:
             cplex_path = "/home/rishav/ibm/cplex/bin/x86-64_linux/cplex"
-            solver = pulp.CPLEX_CMD(path=cplex_path, msg=False, timeLimit=30)
+            solver = pulp.CPLEX_CMD(path=cplex_path, msg=False, timeLimit=30, options=["set threads 1"])
         except FileNotFoundError:
-            solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=30)
+            solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=30, threads=1)
 
         status = prob.solve(solver)
 
@@ -446,14 +446,19 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
 
     origins = cand.origin_geoid.unique()
 
-    # Prepare arguments for parallel processing
-    args_list = [(o, cand, od_distribution, p_dict, q_dict, w_dict, lodes_dict, alpha) for o in origins]
+    # Pre-filter data by origin to reduce memory usage in parallel processing
+    print(f"Pre-filtering candidates by origin for {len(origins)} origins...")
+    cand_by_origin = {o: cand[cand.origin_geoid == o].copy() for o in origins}
+
+    # Prepare arguments for parallel processing - each worker gets only its data
+    args_list = [(o, cand_by_origin[o], od_distribution, p_dict, q_dict, w_dict, lodes_dict, alpha) for o in origins]
 
     calibrated_df = []
     success_count = 0
     fallback_count = 0
 
     num_workers = max(1, multiprocessing.cpu_count() - 1)
+    num_workers = max(1, 4)
     print(f"Starting calibration with {num_workers} parallel workers...")
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:

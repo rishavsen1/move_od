@@ -29,6 +29,11 @@ if __name__ == "__main__":
 # # Ensure the script runs from the base folder of the repository
 # base_path = os.path.dirname(os.path.abspath(__file__))
 # os.chdir(base_path)
+import logging
+import warnings
+
+logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
 
 
 def zip_and_download(output_path):
@@ -510,22 +515,22 @@ if begin:
 
             for day, lodes_output_df in zip(days, lodes_output_dfs):
                 # getting routed trips and travel times
-                routing_df = get_routed(
-                    od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs
-                )
+                routing_df = get_routed(od_df=lodes_output_df, desired_date=start_date, hourly_graphs=hourly_graphs)
 
                 print(routing_df.head())
 
                 # perforing mean speed shift and generating new graphs
                 hourly_graphs_adjusted = perform_mean_speed_shift(
-                    routing_df=routing_df, travel_time_to_work_by_geoid=travel_time_to_work_df
+                    routing_df=routing_df,
+                    travel_time_to_work_by_geoid=travel_time_to_work_df,
+                    hourly_graphs=hourly_graphs,
                 )
 
                 # getting routed trips and travel times post mssr
                 post_mssr_routing_df = get_routed(
                     od_df=lodes_output_df,
                     desired_date=start_date,
-                    hourly_graphs_arg=hourly_graphs_adjusted,
+                    hourly_graphs=hourly_graphs_adjusted,
                 )
 
                 # calibrated trips
@@ -543,7 +548,7 @@ if begin:
                 routing_df = get_routed(
                     od_df=calibrated_df,
                     desired_date=start_date,
-                    hourly_graphs_arg=hourly_graphs,
+                    hourly_graphs=hourly_graphs,
                     post_calibration=True,
                 )
 

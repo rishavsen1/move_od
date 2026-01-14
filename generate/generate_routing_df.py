@@ -1,3 +1,10 @@
+import os
+import sys
+
+# CRITICAL: Set environment variables BEFORE any other imports to suppress Streamlit in workers
+os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
+os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
+
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import LineString
@@ -6,9 +13,39 @@ import networkx as nx
 import numpy as np
 import multiprocessing as mp
 from tqdm import tqdm
+import logging
+import warnings
 
 from generate.config import *
 from generate.utils import calculate_speed_shift, apply_mssr_to_existing_graphs
+
+
+# Comprehensive Streamlit warning suppression
+def suppress_streamlit_warnings():
+    """Aggressively suppress all Streamlit warnings in multiprocessing workers"""
+    # Disable all streamlit loggers
+    for logger_name in [
+        "streamlit",
+        "streamlit.runtime",
+        "streamlit.runtime.state",
+        "streamlit.runtime.state.session_state_proxy",
+        "streamlit.runtime.scriptrunner_utils.script_run_context",
+    ]:
+        logging.getLogger(logger_name).setLevel(logging.CRITICAL)
+        logging.getLogger(logger_name).disabled = True
+
+    # Filter all streamlit-related warnings
+    warnings.filterwarnings("ignore", category=UserWarning, module="streamlit")
+    warnings.filterwarnings("ignore", message=".*Session state.*")
+    warnings.filterwarnings("ignore", message=".*streamlit.*")
+    warnings.filterwarnings("ignore", message=".*ScriptRunContext.*")
+
+    # Redirect streamlit stderr output if in worker process
+    if mp.current_process().name != "MainProcess":
+        sys.stderr = open(os.devnull, "w")
+
+
+suppress_streamlit_warnings()
 
 
 # Helper function to get travel time bin based on census categories
@@ -62,18 +99,13 @@ def get_census_time_bin_index(time, dep_edges, dep_names):
     return len(dep_names) - 1
 
 
-def process_od_pair_with_geoid(od_task):
+def process_od_pair_with_geoid(od_task, G_hour):
     """Process a single OD pair with CBG information and return the routing result"""
     orig_node, dest_node, dep_time, origin_geoid, dest_geoid, dep_edges, dep_names = od_task
 
     if isinstance(dep_time, int):
         raise Exception("int dep_time")
 
-    # Find closest hour
-    hour_to_use = dep_time.floor(TIME_INTERVAL)
-    global hourly_graphs
-
-    G_hour = hourly_graphs.get(hour_to_use)
     if G_hour is None:
         return None  # Skip if no graph is available for this time
 
@@ -156,9 +188,7 @@ def build_od_pairs_post_calibration(od_df, desired_date):
     return od_pairs
 
 
-def get_routed(od_df, desired_date, hourly_graphs_arg, post_calibration=False, parallel=False):
-    global hourly_graphs
-    hourly_graphs = hourly_graphs_arg
+def get_routed(od_df, desired_date, hourly_graphs, post_calibration=False, parallel=True):
 
     dep_edges = np.array(
         [
@@ -261,23 +291,55 @@ def get_routed(od_df, desired_date, hourly_graphs_arg, post_calibration=False, p
         (orig, dest, dep, origin_geoid, dest_geoid, dep_edges, dep_names)
         for (orig, dest, dep, origin_geoid, dest_geoid) in od_tasks
     ]
-    # Parallel processing with the updated function
-    n_cpus = max(1, mp.cpu_count() - 1)
+
+    # Group tasks by hour to avoid memory duplication from multiprocessing
+    print("Grouping tasks by hour to minimize memory usage...")
+    from collections import defaultdict
+
+    tasks_by_hour = defaultdict(list)
+
+    for task in od_tasks:
+        orig_node, dest_node, dep_time, origin_geoid, dest_geoid, dep_edges, dep_names = task
+        hour_to_use = dep_time.floor(TIME_INTERVAL)
+        tasks_by_hour[hour_to_use].append(task)
+
+    # Process each hour separately to avoid duplicating all graphs in memory
+    all_results = []
+
     if parallel:
-        print(f"Routing OD pairs in parallel using {n_cpus} cores")
-        with mp.Pool(n_cpus) as pool:
-            all_results = list(
-                tqdm(pool.imap(process_od_pair_with_geoid, od_tasks), total=len(od_tasks), desc="Routing OD pairs")
-            )
+        n_cpus = max(1, mp.cpu_count() - 1)
+        print(f"Processing tasks in parallel (by hour) using {n_cpus} cores per hour...")
+
+        for hour, hour_tasks in tqdm(tasks_by_hour.items(), desc="Processing hours"):
+            G_hour = hourly_graphs.get(hour)
+            if G_hour is None:
+                all_results.extend([None] * len(hour_tasks))
+                continue
+
+            # Use functools.partial to bind G_hour to the function
+            from functools import partial
+
+            process_func = partial(process_od_pair_with_geoid, G_hour=G_hour)
+
+            # Process this hour's tasks in parallel
+            with mp.Pool(n_cpus) as pool:
+                hour_results = pool.map(process_func, hour_tasks)
+                all_results.extend(hour_results)
     else:
-        all_results = []
-        for task in tqdm(od_tasks, total=len(od_tasks), desc="Routing OD pairs (single process)"):
-            try:
-                result = process_od_pair_with_geoid(task)
-                all_results.append(result)
-            except Exception as e:
-                print(f"Error processing task: {e}")
-                all_results.append(None)
+        print("Processing tasks sequentially by hour...")
+        for hour, hour_tasks in tqdm(tasks_by_hour.items(), desc="Processing by hour"):
+            G_hour = hourly_graphs.get(hour)
+            if G_hour is None:
+                all_results.extend([None] * len(hour_tasks))
+                continue
+
+            for task in hour_tasks:
+                try:
+                    result = process_od_pair_with_geoid(task, G_hour)
+                    all_results.append(result)
+                except Exception as e:
+                    print(f"Error processing task: {e}")
+                    all_results.append(None)
 
     # Filter out failures
     routing_results = [r for r in all_results if r is not None]
@@ -304,7 +366,7 @@ def get_routed(od_df, desired_date, hourly_graphs_arg, post_calibration=False, p
     return routing_df
 
 
-def perform_mean_speed_shift(routing_df, travel_time_to_work_by_geoid):
+def perform_mean_speed_shift(routing_df, travel_time_to_work_by_geoid, hourly_graphs):
     mssr = calculate_speed_shift(routing_df, travel_time_to_work_by_geoid)
     print(f"Mean Speed Shift Ratio (MSSr): {mssr:.4f}")
 
