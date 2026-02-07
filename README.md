@@ -1,109 +1,75 @@
-# Move-OD
+<!-- README: user-focused web app guide. Short, practical, avoids backend/API internals. -->
 
-We can generate origin-destination (OD) pairs for a given county or city, from the releveant datasets about the region. The geographic areas are divided into census tracts(larger, poor resolution) and census block groups (CBGs) (smaller, better resolution). We find the movement matrix of people travelling for jobs (LODES), or general purposes (Safegraph).
+## Requirements
 
-<!--
-## The data
+- Python 3.10+ (Linux)
+- Please get your US Census API key (free): https://api.census.gov/data/key_signup.html
 
-1. Geographic data
+## Setup
 
-The geographic data of Hamilton county defines the area and boundaries of the census tracts and CBGs. It also provides unique GEOIDs for each zone under consideration, which we can further use to find relevant regions in other datasets.
+### 1. Configure Census API Key
 
-2. People movement`<br>`
-   a. [LODES dataset](https://lehd.ces.census.gov/data/)`<br>`
-   b. Safegraph dataset (our data is for Jan 2021-Mar2021)
+Move-OD requires a free Census API key to download LODES and geographic data.
 
-These provide the information about the movement of people (the number of people moving, and their origin and destination CBG).
+1. Once you get your free US Census API key from: [Census API Key Signup](https://api.census.gov/data/key_signup.html), copy the env template:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit `.env` and replace `YOUR_CENSUS_API_KEY_HERE` with your actual key
 
-3. Residential and Work locations
+### 2. Install Dependencies
 
-   The locations of residential and commercial(work) areas are obtained from OpenStreetMaps(OSM). They are obtained by using the [OSM Accomodation tags](https://wiki.openstreetmap.org/wiki/Key:building#Accommodation) and the python library OSMNX.
-
-   The work locations are obtained as a combination of the tags [commercial](https://wiki.openstreetmap.org/wiki/Key:building#Commercial), [civic/amenity](https://wiki.openstreetmap.org/wiki/Key:building#Civic/amenity), and the Safegraph POI (point of interest) locations.
-
-4. Microsoft Buildings dataset (complements to OSM locations)
-
-   These are the locations of all buildings in Hamilton county, obtained from [Microsoft Building Footprints](https://github.com/Microsoft/USBuildingFootprints), and are **not labelled** as home/work places. These locations are used in lieu of OSM labelled locations only in case the concerned CBG has no home/work locations from OSM.
-
-   The data extraction is done as in [read_ms_buildings.py](OD_generation_scripts/read_ms_buildings.py).
-
-## Deriving the OD matrix
-
-We intend to find the Origin Destination (OD) matrix for Hamilton county. The home location acts as the **origin**, while the work location acts as the **destination**. It is obtained as a combination of the home location, work location, travel start time, and their return time. It is found by uniform sampling across the home and commercial locations.
-
-**Note**: A random seed of 42 is used for all the random samples.
-
-There are a few assumptions made to help in the process of sampleing the data:
-
-1. For the LODES and Safegraph data, we find the number of people travelling between each OD pair, and randomly sample the home and work locations from the OSM locations (or Microsoft Buildings if needed).
-2. The travel start time(go_time) is sampled randomly from 7AM to 9AM (at 15min intervals)
-3. The return time is sampled randomly from 4PM to 6PM (at 15min intervals)
-
-For example if an OD pair has 50 people travelling among them, then we sample 50 home and 50 work locations and randomly choose 50 start and return times in the manner described. -->
-
-## Running the pipeline
-
-(This was run on python 3.10 on an Ubuntu 22.14 machine)
-
-Install the requirements using `pip install -r requirements.txt`.
-
-After installing Streamlit, run the command:
-
-```
-$ streamlit run app.py --browser.gatherUsageStats False
+```bash
+cd move_od
+pip install -r requirements.txt
 ```
 
-Now you can select the State, County and if you have INRIX road speeds, you may provide them. The result will be produced in the display output folder under `/calibrated_move_od`.
+### 3. Start the Application
 
-## Explanation of the generated OD data
+**Using Streamlit**
 
-The generated data has been converted to parquet and is available in the folder you selected to be the output folder. ( by deafult: `generated_OD`)
-
-<!--
-Each row in either dataset represents a single trip by one person. In the case of lodes dataset, the trip represent movement to the job location and then back to home. Here are the key columns.
-
-The columns(with their datatypes) are:
-
-- h_geocode(string): The GEOID of the person's home CBG
-- w_geocode(string): The GEOID of the person's work CBG
-- total_jobs(float): the total number of people moving for jobs between the h_geocode and w_geocode (its sum gives us the total number of people moving; can be ignored for simplicity purposes).
-- Note in case of the safegraph data the corresponding column is frequency. It shows the cumulative movement between the two block groups.
-- home_loc_lat(float): latitude of chosen home location
-- home_loc_lon(float): longitude of chosen home location
-- work_loc_lat(float): latitude of chosen work location
-- work_loc_lon(float): longitude of chosen work location
-- go_time/time_0(datetime.time): time the person leaves the home - in 24 hour format
-- return_time/time_1(datetime.time): time the person leaves the workplace - in 24 hour format
-- go_time_str/time_0_str(string): time the person leaves the home - in 24 hour format (as a string)
-- return_time_str/time_1_str(string): time the person leaves the workplace - in 24 hour format (as a string)
-- home_geom(Point): shapely point of home location
-- work_geom(Point): shapely point of work location -->
-<!--
-For LODES, the times are written as time_0, time_1 ... because there may be additional time windows that we may want to add in the OD generation.
-
-LODES OD dataset example:
-![LODES example](plots/LODES_cols.png)
-
-Safegraph OD dataset example:
-![Safegraph example](plots/Sg_cols.png)
-
-Here's a time distribution of the people moving from LODES data (Hamilton county, TN, USA). The example data has a time step of 1 min. The start time is chosen from 7am to 9am , and return times are chosen as 4pm to 6pm.
-![lodes poeple movement going time](plots/ham_lodes_time_0.png)
-![lodes poeple movement return time](plots/ham_lodes_time_1.png)
-
-Time distribution of the people moving from Safegaprh data (Chattanooga, TN, USA). The times are chosen to be from 7am to 9pm, to model the flow of people across an entire day.
-
-![Safegraph poeple movement going time](plots/ham_sg_go.png)
-![Safegraph poeple movement return time](plots/ham_sg_return.png)
-
-## Open trip Planner setup
-
-Required to get static travel times for ODs
-( only for Chattanooga, TN)
-
+```bash
+streamlit run app.py
 ```
-git clone https://github.com/rishavsen1/otp-carta.git
-docker run -it \
-  --name otp-carta-container \
-  -p 8080:8080 otp-carta java -Xmx3G -jar otp-1.5.0-shaded.jar --build /app/otp --inMemory
-``` -->
+
+## Reproducibility Outcomes
+
+- **F1**: Figure 1 (Departure time calibration vs ACS) — generated by scripts/figures_from_output.py or analysis/figures_1_2.ipynb.
+- **F2**: Figure 2 (Travel time distributions: Initial, Calibrated, ACS) — generated by scripts/figures_from_output.py or analysis/figures_1_2.ipynb.
+
+## Notes on Variability
+
+The pipeline samples road speeds and, when INRIX (a closed-source dataset) is not used, the raod speeds falls back to default (OpenSreetMaps) speeds. As a result, figures are expected to be **qualitatively similar** but not identical to the paper.
+
+## Step-by-Step
+
+1. Click on the url and in the UI, You will see the following page:
+   ![MoveOD interface](files/interface.png)
+
+2. Set State=“Tennessee”, County=“Hamilton” (set by default) and click **BEGIN** the pipeline.
+
+3. Once the run finishes (potentially up to 2 hours, as the code is executed as a single process to ensure repeatability and eliminate intermediate‑state errors), run:
+
+   `python3 figures_from_output.py --state Tennessee --county Hamilton`
+
+4. Outputs are saved to plots/figures:
+   - fig1_departure_time_calibration.png
+   - fig2_travel_time_distribution.png
+   - supp_od_map.png
+   - supp_departure_time_hist.png
+
+## Scenario Variations
+
+- Use a different county/state (any supported by LODES/OSM) with the same steps.
+- Provide INRIX paths in the UI to use proprietary speed data (if available).
+
+## External Data Links (Anonymized)
+
+- Census data: https://api.census.gov/data/key_signup.html
+- (Optional) INRIX data: **not redistributed**. If available, provide the link in your local instructions.
+
+## License
+
+MIT — see the `LICENSE` file.
+
+---

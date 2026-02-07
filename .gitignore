@@ -62,6 +62,7 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,visualstudiocode,jupyternotebooks
 
+__pycache__/
 /OD_generation_scripts/.ipynb_checkpoints/
 /OD_generation_scripts/__pycache__/
 /OD_generation_scripts/cache/
@@ -97,3 +98,6 @@ traffic_density.png
 osmnx_files/
 algorithms/
 routing/
+.vscode
+*cache*/
+*.cache
