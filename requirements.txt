@@ -37,3 +37,4 @@ aiohttp==3.11.18
 
 python-dotenv==1.1.1
 scikit-learn==1.5.0
+ipykernel==6.29.0
