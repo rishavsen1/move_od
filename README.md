@@ -13,6 +13,7 @@ Move-OD requires a free Census API key to download LODES and geographic data.
 
 1. Once you get your free US Census API key from: [Census API Key Signup](https://api.census.gov/data/key_signup.html), copy the env template:
    ```bash
+   cd move_od
    cp .env.example .env
    ```
 2. Edit `.env` and replace `YOUR_CENSUS_API_KEY_HERE` with your actual key
@@ -20,7 +21,6 @@ Move-OD requires a free Census API key to download LODES and geographic data.
 ### 2. Install Dependencies
 
 ```bash
-cd move_od
 pip install -r requirements.txt
 ```
 
