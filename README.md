@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python 3.10+ (Linux)
+- Python 3.12 (Linux)
 - Please get your US Census API key (free): https://api.census.gov/data/key_signup.html
 
 ## Setup
