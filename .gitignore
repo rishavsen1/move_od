@@ -95,4 +95,5 @@ cache/
 tennessee-latest.osm.pbf
 traffic_density.png
 osmnx_files/
-
+algorithms/
+routing/

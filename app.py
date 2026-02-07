@@ -275,7 +275,7 @@ tiger_shapefile_year = col2.text_input("Enter TIGER shapefile year (Latest year 
 inrix_path = col3.text_input("INRIX data path", value=f"{inrix_folder_path}/Hamilton-County-INRIX.csv")
 inrix_conversion_path = col4.text_input("INRIX conversion path", value=f"{inrix_folder_path}/XD_Identification.csv")
 
-output_path = f"./move_OD2/{state}/{county}/{start_date}_{end_date}"
+output_path = f"./move_OD/{state}/{county}/{start_date}_{end_date}"
 st.write(f"Output file path: {output_path}")
 
 
@@ -512,7 +512,9 @@ if begin:
                     od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs
                 )
 
-                print(routing_df.head())
+                lodes_output_path = f"{output_path}/lodes_combs/lodes_{day}.csv"
+                # print(lodes_output_path, routing_df.head())
+                routing_df.to_csv(lodes_output_path, index=False)
 
                 # perforing mean speed shift and generating new graphs
                 hourly_graphs_adjusted = perform_mean_speed_shift(

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import ast
+import random
 
 np.random.seed(123)
 
@@ -496,12 +497,13 @@ def post_calibrating_assignment(calibrated_trips, origin_buildings, dest_buildin
 
     def sample_departure_time(bin_idx):
         start, end = departure_time_bins[bin_idx]
-        return start
+        depart_time = random.randint(start, end) * 60
+        return depart_time
         # return np.random.randint(start, end + 1)
 
     synthetic_df["departure_time"] = synthetic_df["departure_time_bin"].apply(sample_departure_time)
     synthetic_df["departure_datetime"] = pd.to_datetime("2025-03-10") + pd.to_timedelta(
-        synthetic_df["departure_time"], unit="m"
+        synthetic_df["departure_time"], unit="s"
     )
 
     np.random.seed(42)
@@ -515,7 +517,6 @@ def post_calibrating_assignment(calibrated_trips, origin_buildings, dest_buildin
                 tmp.index = grp.index
                 tmp_latlon = tmp["location"].apply(lambda loc: pd.Series({"origin_lat": loc[0], "origin_lon": loc[1]}))
                 tmp = tmp_latlon  # Keep this line, remove the next one
-                print("Using MS building location")
         else:
             # sample with replacement
             samp = houses.sample(n=len(grp), replace=True).reset_index(drop=True)
@@ -536,7 +537,6 @@ def post_calibrating_assignment(calibrated_trips, origin_buildings, dest_buildin
                 lambda loc: pd.Series({"destination_lat": loc[0], "destination_lon": loc[1]})
             )
             tmp = tmp_latlon  # Keep this, remove the next line
-            print("Using MS building location")
         else:
             samp = offices.sample(n=len(grp), replace=True).reset_index(drop=True)
             samp.index = grp.index

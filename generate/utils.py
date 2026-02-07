@@ -13,6 +13,7 @@ import requests
 import gzip
 import os
 import shutil
+from tqdm import tqdm
 import zipfile
 import subprocess
 from io import StringIO
@@ -272,7 +273,7 @@ def download_lodes(logger, state, state_abbr, lodes_code, year):
 
 def download_ms_buildings(logger, state, state_stripped):
     type = "zip"
-    url = f"https://usbuildingdata.blob.core.windows.net/usbuildings-v2/{state_stripped}.geojson.zip"
+    url = f"https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/{state_stripped}.geojson.zip"
     compressed_path = f"./data/states/{state}/{state_stripped}.geojson.zip"
     decompressed_path = f"./data/states/{state}/"  # Path to the directory to extract files
     download_and_decompress(type, logger, url, compressed_path, decompressed_path)
