@@ -5,10 +5,6 @@ import math
 import osmnx as ox
 import geopandas as gpd
 import pandas as pd
-import multiprocessing
-from multiprocessing import Pool
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from tqdm import tqdm
 
 
 def process_section(miny, maxy, minx, maxx, tags, logger):
@@ -76,29 +72,16 @@ class LocationsOSMSG:
         if os.path.exists(buildings_file):
             buildings = gpd.read_file(buildings_file)
         else:
-            num_workers = min(multiprocessing.cpu_count(), 12)
-            splits = self.split_bbox(miny, maxy, minx, maxx, num_workers)
-            func_args = [(s[0], s[1], s[2], s[3], {"building": True}, self.logger) for s in splits]
-
-            results = []
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                future_to_split = {executor.submit(process_section, *args): args for args in func_args}
-
-                # Use tqdm for progress tracking
-                for future in tqdm(as_completed(future_to_split), total=len(func_args), desc="Processing sections"):
-                    try:
-                        result = future.result()
-                        if result is not None:
-                            results.append(result)
-                    except Exception as e:
-                        self.logger.error(f"Error processing section {future_to_split[future]}: {e}")
-
-            # Combine results and save to file
-            if results:
-                buildings = pd.concat(results, ignore_index=True)
-                buildings.to_file(buildings_file, driver="GeoJSON")
-            else:
-                self.logger.error("No results were obtained from multiprocessing.")
+            # Single process: process the entire bbox
+            try:
+                buildings = process_section(miny, maxy, minx, maxx, {"building": True}, self.logger)
+                if buildings is not None:
+                    buildings.to_file(buildings_file, driver="GeoJSON")
+                else:
+                    self.logger.error("Failed to process the section.")
+                    return None
+            except Exception as e:
+                self.logger.error(f"Error processing section: {e}")
                 return None
 
         # Determine UTM zone
