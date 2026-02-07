@@ -786,5 +786,6 @@ if st.session_state.processing_complete:
                 bounds = county_geoid_df.total_bounds  # [minx, miny, maxx, maxy]
                 st.write(f"**County bounds**: {bounds}")
                 st.write(f"**Census block groups**: {len(county_geoid_df)}")
+                st.write(f"**GENERATION COMPLETE**")
             except Exception as e:
                 logger.warning(f"Could not display county boundary: {e}")
