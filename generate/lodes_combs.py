@@ -621,8 +621,8 @@ class LodesComb:
                     f"Warning: Not all ODs were assigned. {original_od_count - len(assigned_od)} ODs remain unassigned."
                 )
 
-            if len(result_df) > 0:
-                self.logger.warning(f"Warning: Not all ODs were assigned. {len(result_df)} ODs remain unassigned.")
+            # if len(result_df) > 0:
+            #     self.logger.warning(f"Warning: Not all ODs were assigned. {len(result_df)} ODs remain unassigned.")
 
             results.append((day, assigned_od))
             self.logger.info(f"Saved results for day {day}")
@@ -632,13 +632,8 @@ class LodesComb:
         lodes_output_dfs = []
         days = []
         for result in results:
-            lodes_output_path = f"{self.output_path}/lodes_combs/lodes_{day}.csv"
-            day, df = result
-            df.to_csv(lodes_output_path, index=False)
+            day, df = result            
             lodes_output_dfs.append(df)
             days.append(day)
-            self.logger.info(f"Saved results for day {day}")
-
-        self.logger.info("All days generated")
 
         return lodes_output_dfs, days, travel_time_to_work_df, census_depart_times_df

@@ -220,6 +220,7 @@ def get_all_candidates(od_df, dep_pos, routing_df, tt_bin_names):
             for d in od_pos[o]:
                 needs.append((o, s, d))
     need_df = pd.DataFrame(needs, columns=["origin_geoid", "departure_time_bin", "destination_geoid"])
+    routing_df[["origin_geoid", "destination_geoid"]] = routing_df[["origin_geoid", "destination_geoid"]].astype(str)
 
     # merge with existing routes
     routes = routing_df[
@@ -420,14 +421,35 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
             if idx_cells:
                 prob += pulp.lpSum(var[key] for key in idx_cells) + e_minus[b] - e_plus[b] == int(round(pbo * N_o))
 
-        # Solve using CPLEX at /home/rishav/ibm
+        # Solve – try CPLEX → HiGHS → CBC, then IPF fallback
         try:
-            try:
-                cplex_path = "/home/rishav/ibm/cplex/bin/x86-64_linux/cplex"
-                solver = pulp.CPLEX_CMD(path=cplex_path, msg=False, timeLimit=30)
-            except:
+            import os
+            status = None
+
+            # 1. Try CPLEX (commercial, fastest)
+            cplex_path = "/home/rishav/ibm/cplex/bin/x86-64_linux/cplex"
+            if os.path.isfile(cplex_path) and os.access(cplex_path, os.X_OK):
+                try:
+                    solver = pulp.CPLEX_CMD(path=cplex_path, msg=False, timeLimit=30)
+                    status = prob.solve(solver)
+                    print("Solver: CPLEX")
+                except Exception:
+                    status = None
+
+            # 2. Try HiGHS (best open-source solver)
+            if status is None:
+                try:
+                    solver = pulp.HiGHS_CMD(msg=False, timeLimit=30)
+                    status = prob.solve(solver)
+                    print("Solver: HiGHS_CMD")
+                except Exception:
+                    status = None
+
+            # 3. Fall back to CBC (bundled with PuLP)
+            if status is None:
                 solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=30)
-            status = prob.solve(solver)
+                status = prob.solve(solver)
+                print("Solver: PULP_CBC_CMD")
             if status == pulp.LpStatusOptimal:
                 trips_o["calibrated_weight"] = 0.0
                 for key, v in var.items():
