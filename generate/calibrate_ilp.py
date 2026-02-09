@@ -439,7 +439,7 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
             # 2. Try HiGHS (best open-source solver)
             if status is None:
                 try:
-                    solver = pulp.HiGHS_CMD(msg=False, timeLimit=30)
+                    solver = pulp.HiGHS(msg=False, timeLimit=30)
                     status = prob.solve(solver)
                     print("Solver: HiGHS_CMD")
                 except Exception:
