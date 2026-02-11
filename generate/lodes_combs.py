@@ -483,63 +483,35 @@ class LodesComb:
         np.random.seed(42)
         random.seed(42)
 
-        # make this common
-        census_depart_times_df = get_census_data_wrapper(
+        census_depart_times_path = f"{self.output_path}/census_data/census_depart_times.parquet"
+        travel_time_to_work_path = f"{self.output_path}/census_data/travel_time_to_work.parquet"
+
+        if os.path.exists(census_depart_times_path) and os.path.exists(travel_time_to_work_path):
+            self.logger.info("Loading cached census data from CSV files.")
+            census_depart_times_df = pd.read_parquet(census_depart_times_path)
+            travel_time_to_work_df = pd.read_parquet(travel_time_to_work_path)
+        else:
+            self.logger.info("Census data CSVs not found. Fetching from API.")
+            census_depart_times_df = get_census_data_wrapper(
             table="B08302",
             api_url="https://api.census.gov/data/2021/acs/acs5",
             state_fips=state_fips,
             county_fips=county_fips,
             block_groups=block_groups,
             county_only=False,
-        )
-        # travel_time_to_work_by_departure_df = get_census_data_wrapper(
-        #     table="B08133",
-        #     api_url="https://api.census.gov/data/2021/acs/acs1",
-        #     state_fips=state_fips,
-        #     county_fips=county_fips,
-        #     block_groups=block_groups,
-        #     county_only=True,
-        # )
-        # hours_worked = get_census_work_time(
-        #     table="B23020",
-        #     api_url="https://api.census.gov/data/2021/acs/acs1",
-        #     state_fips=state_fips,
-        #     county_fips=county_fips,
-        #     block_groups=block_groups,
-        #     county_only=True,
-        # )
-        travel_time_to_work_df = get_census_travel_time_data(
+            )
+            travel_time_to_work_df = get_census_travel_time_data(
             table="B08303",
             api_url="https://api.census.gov/data/2021/acs/acs5",
             state_fips=state_fips,
             county_fips=county_fips,
             block_groups=block_groups,
             county_only=False,
-        )
-        # time_arriving_at_work_df = get_census_data_wrapper(
-        #     table="B08602",
-        #     api_url="https://api.census.gov/data/2021/acs/acs1",
-        #     state_fips=state_fips,
-        #     county_fips=county_fips,
-        #     block_groups=block_groups,
-        #     county_only=True,
-        # )
-
-        os.makedirs(f"{self.output_path}/census_data", exist_ok=True)
-        census_depart_times_df.to_csv(f"{self.output_path}/census_data/census_depart_times.csv")
-        travel_time_to_work_df.to_csv(f"{self.output_path}/census_data/travel_time_to_work.csv")
-
-        # travel_time_to_work_by_departure_df.to_csv(
-        #     f"{self.output_path}/census_data/travel_time_to_work_by_departure.csv"
-        # )
-        # hours_worked.to_csv(f"{self.output_path}/census_data/hours_worked.csv")
-        # travel_time_to_work_df.to_csv(f"{self.output_path}/census_data/travel_time_to_work.csv")
-        # time_arriving_at_work_df.to_csv(f"{self.output_path}/census_data/time_arriving_at_work.csv")
-
-        # if sample_size < county_lodes_df.shape[0]:
-        #     county_lodes_df = marginal_dist(county_lodes_df, "h_geocode", "w_geocode", sample_size)
-
-        # G = get_OSM_graph(county, state)
+            )
+            os.makedirs(f"{self.output_path}/census_data", exist_ok=True)
+        
+        census_depart_times_df.to_parquet(f"{self.output_path}/census_data/census_depart_times.parquet")
+        travel_time_to_work_df.to_parquet(f"{self.output_path}/census_data/travel_time_to_work.parquet")
 
         days = sorted(set(day for day in self.datetime_ranges))
         # days = list(range(1))
