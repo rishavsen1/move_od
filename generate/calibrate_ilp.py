@@ -432,7 +432,6 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
                 try:
                     solver = pulp.CPLEX_CMD(path=cplex_path, msg=False, timeLimit=30)
                     status = prob.solve(solver)
-                    print("Solver: CPLEX")
                 except Exception:
                     status = None
 
@@ -441,7 +440,6 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
                 try:
                     solver = pulp.HiGHS(msg=False, timeLimit=30)
                     status = prob.solve(solver)
-                    print("Solver: HiGHS_CMD")
                 except Exception:
                     status = None
 
@@ -449,7 +447,6 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
             if status is None:
                 solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=30)
                 status = prob.solve(solver)
-                print("Solver: PULP_CBC_CMD")
             if status == pulp.LpStatusOptimal:
                 trips_o["calibrated_weight"] = 0.0
                 for key, v in var.items():

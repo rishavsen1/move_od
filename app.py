@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore", message=".*ScriptRunContext.*")
+
 import streamlit as st
 import os
 import datetime
@@ -24,7 +27,7 @@ from generate.logger import Logger
 import multiprocessing as mp
 
 if __name__ == "__main__":
-    mp.set_start_method("spawn", force=True)
+    mp.set_start_method("fork", force=True)
 
 # # Ensure the script runs from the base folder of the repository
 # base_path = os.path.dirname(os.path.abspath(__file__))
@@ -518,7 +521,8 @@ if begin:
 
                 # perforing mean speed shift and generating new graphs
                 hourly_graphs_adjusted = perform_mean_speed_shift(
-                    routing_df=routing_df, travel_time_to_work_by_geoid=travel_time_to_work_df
+                    routing_df=routing_df, travel_time_to_work_by_geoid=travel_time_to_work_df,
+                    hourly_graphs=hourly_graphs,
                 )
 
                 # getting routed trips and travel times post mssr
