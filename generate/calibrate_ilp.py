@@ -307,40 +307,25 @@ def ipf_with_time_penalty(trips_o, od_probs, p_bo, max_iter=30):
     return weights
 
 
-def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes_dict, alpha=1.0):
+def _process_single_origin(args):
     """
-    Integer calibration: assigns integer counts to (departure_time_bin, destination) cells
-    to strictly match OD and departure time marginals for each origin,
-    with an L1 penalty for deviation from the initial ODS distribution.
+    Worker function to process a single origin for ILP calibration.
+    Designed to be picklable for multiprocessing.
     """
+    import os
     import pulp
-    from tqdm import tqdm
     import numpy as np
     import pandas as pd
 
-    od_distribution = calculate_od_distribution(od_df, lodes_dict)
-    calibrated_df = []
-    success_count = 0
-    fallback_count = 0
+    o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha = args
 
-    for o in tqdm(cand.origin_geoid.unique(), desc="Calibrating origins (ILP)"):
+    result = {"origin": o, "df": None, "status": "skipped", "error": None}
 
-        if o not in od_distribution or o not in p_dict or o not in lodes_dict:
-            print(f"Skipping origin {o} (missing reference data)")
-            continue
-
-        N_o = int(lodes_dict[o])
-        if N_o == 0:
-            continue
-
-        trips_o = cand[cand.origin_geoid == o].copy()
+    try:
+        trips_o = cand_subset.copy()
         if len(trips_o) == 0:
-            print(f"No candidate trips for origin {o}")
-            continue
-
-        od_probs = od_distribution[o]
-        p_bo = p_dict[o]
-        q_so = q_dict[o]
+            result["status"] = "no_candidates"
+            return result
 
         # Get unique destinations and departure_time_bins
         destinations = sorted(trips_o.destination_geoid.unique())
@@ -348,12 +333,20 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
 
         # Build OD and OS integer marginals (rounded, sum to N_o)
         od_targets = np.array([od_probs.get(d, 0) for d in destinations])
-        od_targets = np.round(od_targets / od_targets.sum() * N_o).astype(int)
-        od_targets[-1] += N_o - od_targets.sum()
+        if od_targets.sum() > 0:
+            od_targets = np.round(od_targets / od_targets.sum() * N_o).astype(int)
+            od_targets[-1] += N_o - od_targets.sum()
+        else:
+            result["status"] = "no_od_targets"
+            return result
 
         os_targets = np.array([q_so.get(s, 0) for s in time_bins])
-        os_targets = np.round(os_targets / os_targets.sum() * N_o).astype(int)
-        os_targets[-1] += N_o - os_targets.sum()
+        if os_targets.sum() > 0:
+            os_targets = np.round(os_targets / os_targets.sum() * N_o).astype(int)
+            os_targets[-1] += N_o - os_targets.sum()
+        else:
+            result["status"] = "no_os_targets"
+            return result
 
         # Build ILP
         prob = pulp.LpProblem(f"ILP_Cal_{o}", pulp.LpMinimize)
@@ -364,49 +357,47 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
             for d in destinations:
                 key = (s, d)
                 if ((trips_o.departure_time_bin == s) & (trips_o.destination_geoid == d)).any():
-                    var[key] = pulp.LpVariable(f"x_{o}_{s}_{d}", lowBound=0, cat="Integer")
+                    var[key] = pulp.LpVariable(f"x_{s}_{d}", lowBound=0, cat="Integer")
+
+        if not var:
+            result["status"] = "no_variables"
+            return result
 
         # Travel-time slacks (soft constraint)
         e_plus = {b: pulp.LpVariable(f"ep_{b}", lowBound=0) for b in p_bo}
         e_minus = {b: pulp.LpVariable(f"em_{b}", lowBound=0) for b in p_bo}
 
-        # ---- L1 penalty for deviation from initial ODS ----
-        # 1. Get initial ODS proportions for this origin
-        w_od_prop = w_dict.get(o, {}) if w_dict is not None else {}
-        # 2. Convert to expected counts for this origin
+        # Convert w_od_prop to expected counts
         w_od = {}
         for s in time_bins:
             for d in destinations:
                 w_od[(s, d)] = w_od_prop.get((s, d), 0) * N_o
 
-        # 3. L1 slack variables for OD deviation
+        # L1 slack variables for OD deviation
         g_plus = {}
         g_minus = {}
         for key in var:
-            g_plus[key] = pulp.LpVariable(f"gplus_{o}_{key[0]}_{key[1]}", lowBound=0)
-            g_minus[key] = pulp.LpVariable(f"gminus_{o}_{key[0]}_{key[1]}", lowBound=0)
+            g_plus[key] = pulp.LpVariable(f"gplus_{key[0]}_{key[1]}", lowBound=0)
+            g_minus[key] = pulp.LpVariable(f"gminus_{key[0]}_{key[1]}", lowBound=0)
 
-        # 4. Add L1 deviation constraints for each (s, d)
+        # Add L1 deviation constraints
         for key in var:
             prob += var[key] - w_od[key] == g_minus[key] - g_plus[key]
 
-        # Objective: minimize travel time deviation + L1 OD deviation
+        # Objective
         prob += pulp.lpSum(e_plus[b] + e_minus[b] for b in p_bo) + alpha * pulp.lpSum(
             g_plus[key] + g_minus[key] for key in var
         )
 
-        # (C1) normalization: total trips assigned = N_o
+        # Constraints
         prob += pulp.lpSum(var.values()) == N_o
 
-        # (C2) OD marginals (strict)
         for i, d in enumerate(destinations):
             prob += pulp.lpSum(var[(s, d)] for s in time_bins if (s, d) in var) == od_targets[i]
 
-        # (C3) OS marginals (strict)
         for j, s in enumerate(time_bins):
             prob += pulp.lpSum(var[(s, d)] for d in destinations if (s, d) in var) == os_targets[j]
 
-        # (C4) Travel time (soft)
         for b, pbo in p_bo.items():
             idx_cells = []
             for key in var:
@@ -421,59 +412,140 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
             if idx_cells:
                 prob += pulp.lpSum(var[key] for key in idx_cells) + e_minus[b] - e_plus[b] == int(round(pbo * N_o))
 
-        # Solve – try CPLEX → HiGHS → CBC, then IPF fallback
-        try:
-            import os
-            status = None
-
-            # 1. Try CPLEX (commercial, fastest)
-            cplex_path = "/home/rishav/ibm/cplex/bin/x86-64_linux/cplex"
-            if os.path.isfile(cplex_path) and os.access(cplex_path, os.X_OK):
-                try:
-                    solver = pulp.CPLEX_CMD(path=cplex_path, msg=False, timeLimit=30)
-                    status = prob.solve(solver)
-                except Exception:
-                    status = None
-
-            # 2. Try HiGHS (best open-source solver)
-            if status is None:
-                try:
-                    solver = pulp.HiGHS(msg=False, timeLimit=30)
-                    status = prob.solve(solver)
-                except Exception:
-                    status = None
-
-            # 3. Fall back to CBC (bundled with PuLP)
-            if status is None:
-                solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=30)
+        # Solve
+        status = None
+        cplex_path = "/home/rishav/ibm/cplex/bin/x86-64_linux/cplex"
+        if os.path.isfile(cplex_path) and os.access(cplex_path, os.X_OK):
+            try:
+                solver = pulp.CPLEX_CMD(path=cplex_path, msg=False, timeLimit=30)
                 status = prob.solve(solver)
-            if status == pulp.LpStatusOptimal:
-                trips_o["calibrated_weight"] = 0.0
-                for key, v in var.items():
-                    count = int(round(v.value()))
-                    s, d = key
-                    candidates = trips_o[(trips_o.departure_time_bin == s) & (trips_o.destination_geoid == d)]
-                    if len(candidates) == 0 or count == 0:
-                        continue
-                    chosen_idx = np.random.choice(candidates.index, size=count, replace=True)
-                    for idx in chosen_idx:
-                        trips_o.loc[idx, "calibrated_weight"] += 1
-                calibrated_df.append(trips_o)
-                success_count += 1
-            else:
-                print(f"ILP failed for origin {o}")
-                weights = ipf_with_time_penalty(trips_o, od_probs, p_bo)
-                if weights is not None:
-                    trips_o["calibrated_weight"] = weights * N_o
-                    calibrated_df.append(trips_o)
-                    fallback_count += 1
-        except Exception as e:
-            print(f"Error with origin {o}: {e}")
+            except Exception:
+                status = None
+
+        if status is None:
+            try:
+                solver = pulp.HiGHS(msg=False, timeLimit=30)
+                status = prob.solve(solver)
+            except Exception:
+                status = None
+
+        if status is None:
+            solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=30)
+            status = prob.solve(solver)
+
+        if status == pulp.LpStatusOptimal:
+            trips_o["calibrated_weight"] = 0.0
+            for key, v in var.items():
+                count = int(round(v.value()))
+                s, d = key
+                candidates = trips_o[(trips_o.departure_time_bin == s) & (trips_o.destination_geoid == d)]
+                if len(candidates) == 0 or count == 0:
+                    continue
+                chosen_idx = np.random.choice(candidates.index, size=count, replace=True)
+                for idx in chosen_idx:
+                    trips_o.loc[idx, "calibrated_weight"] += 1
+            result["df"] = trips_o
+            result["status"] = "success"
+        else:
+            # Fallback to IPF
             weights = ipf_with_time_penalty(trips_o, od_probs, p_bo)
             if weights is not None:
                 trips_o["calibrated_weight"] = weights * N_o
-                calibrated_df.append(trips_o)
-                fallback_count += 1
+                result["df"] = trips_o
+                result["status"] = "fallback"
+            else:
+                result["status"] = "failed"
+
+    except Exception as e:
+        result["error"] = str(e)
+        result["status"] = "error"
+
+    return result
+
+
+def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes_dict, alpha=1.0, n_workers=None):
+    """
+    Integer calibration: assigns integer counts to (departure_time_bin, destination) cells
+    to strictly match OD and departure time marginals for each origin,
+    with an L1 penalty for deviation from the initial ODS distribution.
+    
+    Parallelized version using multiprocessing for Streamlit compatibility.
+    
+    Parameters:
+    -----------
+    n_workers : int, optional
+        Number of parallel workers. Defaults to CPU count - 1. Set to 1 for sequential.
+    """
+    import os
+    import pulp
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    from tqdm import tqdm
+    import numpy as np
+    import pandas as pd
+    import multiprocessing as mp
+
+    od_distribution = calculate_od_distribution(od_df, lodes_dict)
+    
+    # Determine number of workers
+    if n_workers is None:
+        n_workers = max(1, mp.cpu_count() - 1)
+    
+    # Get all origins to process
+    origins = [o for o in cand.origin_geoid.unique() 
+               if o in od_distribution and o in p_dict and o in lodes_dict and int(lodes_dict[o]) > 0]
+    
+    # Prepare arguments for each origin
+    work_items = []
+    for o in origins:
+        N_o = int(lodes_dict[o])
+        cand_subset = cand[cand.origin_geoid == o].copy()
+        if len(cand_subset) == 0:
+            continue
+        
+        od_probs = od_distribution[o]
+        p_bo = p_dict[o]
+        q_so = q_dict[o]
+        w_od_prop = w_dict.get(o, {}) if w_dict is not None else {}
+        
+        work_items.append((o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha))
+    
+    calibrated_df = []
+    success_count = 0
+    fallback_count = 0
+    
+    # Use ProcessPoolExecutor with fork context (compatible with Streamlit's mp.set_start_method("fork"))
+    if n_workers > 1 and len(work_items) > 1:
+        # Use fork context for Streamlit compatibility
+        ctx = mp.get_context("fork")
+        
+        with ctx.Pool(processes=n_workers) as pool:
+            results = list(tqdm(
+                pool.imap(_process_single_origin, work_items, chunksize=1),
+                total=len(work_items),
+                desc="Calibrating origins (ILP parallel)"
+            ))
+        
+        for res in results:
+            if res["df"] is not None:
+                calibrated_df.append(res["df"])
+                if res["status"] == "success":
+                    success_count += 1
+                elif res["status"] == "fallback":
+                    fallback_count += 1
+            elif res["status"] == "error":
+                print(f"Error with origin {res['origin']}: {res['error']}")
+    else:
+        # Sequential fallback for small workloads or n_workers=1
+        for args in tqdm(work_items, desc="Calibrating origins (ILP)"):
+            res = _process_single_origin(args)
+            if res["df"] is not None:
+                calibrated_df.append(res["df"])
+                if res["status"] == "success":
+                    success_count += 1
+                elif res["status"] == "fallback":
+                    fallback_count += 1
+            elif res["status"] == "error":
+                print(f"Error with origin {res['origin']}: {res['error']}")
 
     # Concatenate all results
     if calibrated_df:
