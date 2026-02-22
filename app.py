@@ -506,18 +506,29 @@ if begin:
             success = True
 
         if success:
+            
             calibrated_output_path = f"{output_path}/calibrated_move_od/"
             os.makedirs(calibrated_output_path, exist_ok=True)
 
             for day, lodes_output_df in zip(days, lodes_output_dfs):
-                # getting routed trips and travel times
-                routing_df = get_routed(
-                    od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs
-                )
+                os.makedirs(f"{output_path}/intermediate/{day}", exist_ok=True)
+                routing_df_output_path = f"{output_path}/intermediate/{day}/routing_df.parquet"
+                post_mssr_routing_df_output_path = f"{output_path}/intermediate/{day}/post_mssr_routing_df.parquet"
+                calibrated_df_output_path = f"{output_path}/intermediate/{day}/calibrated_df.parquet"
+                adjusted_graphs_path = f"{output_path}/intermediate/{day}/hourly_graphs_adjusted.json"
 
-                lodes_output_path = f"{output_path}/lodes_combs/lodes_{day}.csv"
-                # print(lodes_output_path, routing_df.head())
-                routing_df.to_csv(lodes_output_path, index=False)
+                
+                if not os.path.exists(routing_df_output_path):  
+                    logger.info("Generating routing df")
+                    # getting routed trips and travel times
+                    routing_df = get_routed(
+                        od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs
+                    )
+
+                    routing_df.to_parquet(routing_df_output_path)
+                else:
+                    logger.info("Reading stored routing df")
+                    routing_df = pd.read_parquet(routing_df_output_path)
 
                 # perforing mean speed shift and generating new graphs
                 hourly_graphs_adjusted = perform_mean_speed_shift(
@@ -525,10 +536,24 @@ if begin:
                     hourly_graphs=hourly_graphs,
                 )
 
-                # getting routed trips and travel times post mssr
-                post_mssr_routing_df = get_routed(
-                    od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs_adjusted
-                )
+                if not os.path.exists(post_mssr_routing_df_output_path):
+                    logger.info("Generating post mssr routing df")
+                    routing_df = pd.read_parquet(routing_df_output_path)
+                    # perforing mean speed shift and generating new graphs
+                    hourly_graphs_adjusted = perform_mean_speed_shift(
+                        routing_df=routing_df, travel_time_to_work_by_geoid=travel_time_to_work_df,
+                        hourly_graphs=hourly_graphs,
+                    )
+
+                    # getting routed trips and travel times post mssr
+                    post_mssr_routing_df = get_routed(
+                        od_df=lodes_output_df, desired_date=start_date, hourly_graphs_arg=hourly_graphs_adjusted
+                    )
+                    post_mssr_routing_df.to_parquet(post_mssr_routing_df_output_path)
+                
+                else:
+                    logger.info("Reading stored post mssr routing df")
+                    post_mssr_routing_df = pd.read_parquet(post_mssr_routing_df_output_path)
 
                 # calibrated trips
                 calibrated_df = calibrate_with_ilp(

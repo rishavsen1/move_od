@@ -317,7 +317,7 @@ def _process_single_origin(args):
     import numpy as np
     import pandas as pd
 
-    o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha = args
+    o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha, cplex_path = args
 
     result = {"origin": o, "df": None, "status": "skipped", "error": None}
 
@@ -414,12 +414,12 @@ def _process_single_origin(args):
 
         # Solve
         status = None
-        cplex_path = "/home/rishav/ibm/cplex/bin/x86-64_linux/cplex"
-        if os.path.isfile(cplex_path) and os.access(cplex_path, os.X_OK):
+        
+        if cplex_path != None:
             try:
-                solver = pulp.CPLEX_CMD(path=cplex_path, msg=False, timeLimit=30)
+                solver = pulp.CPLEX_CMD(path=str(cplex_path), msg=False, timeLimit=30)
                 status = prob.solve(solver)
-            except Exception:
+            except Exception:                
                 status = None
 
         if status is None:
@@ -493,7 +493,8 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
     # Get all origins to process
     origins = [o for o in cand.origin_geoid.unique() 
                if o in od_distribution and o in p_dict and o in lodes_dict and int(lodes_dict[o]) > 0]
-    
+
+    cplex_path = os.environ.get("CPLEX_PATH", "")
     # Prepare arguments for each origin
     work_items = []
     for o in origins:
@@ -507,7 +508,7 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
         q_so = q_dict[o]
         w_od_prop = w_dict.get(o, {}) if w_dict is not None else {}
         
-        work_items.append((o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha))
+        work_items.append((o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha, cplex_path))
     
     calibrated_df = []
     success_count = 0

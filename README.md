@@ -24,6 +24,12 @@ Move-OD requires a free Census API key to download LODES and geographic data.
 pip install -r requirements.txt
 ```
 
+   ### (Optional) Installing CPLEX
+   If you have the full version of CPLEX installed, provide the path and run the command below before starting the Streamlit app. This will speed up the ILP calibration.
+   ```bash
+   export CPLEX_PATH=</path/to/cplex>
+   ```
+   
 ### 3. Start the Application
 
 **Using Streamlit**
