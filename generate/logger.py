@@ -44,14 +44,17 @@ class Logger:
         # Log system stats only if no handlers were previously attached
         if len(self.logger.handlers) == 2:
             cpu_percent = psutil.cpu_percent()
-            cpu_freq = psutil.cpu_freq()
+            try:
+                cpu_freq = psutil.cpu_freq()
+                freq_str = f"{cpu_freq.max}Mhz" if cpu_freq else "N/A"
+            except Exception:
+                freq_str = "N/A"
             cpu_cores = psutil.cpu_count(logical=False)
             cpu_threads = psutil.cpu_count(logical=True)
             virtual_memory = psutil.virtual_memory()
             ram_size = virtual_memory.total
-            # self.logger.info(f"CPU usage: {cpu_percent}%")
             self.logger.info(
-                f"CPU frequency: {cpu_freq.max}Mhz, CPU cores: {cpu_cores}, CPU threads: {cpu_threads}, RAM size: {ram_size / (1024.0 ** 3)} GB"
+                f"CPU frequency: {freq_str}, CPU cores: {cpu_cores}, CPU threads: {cpu_threads}, RAM size: {ram_size / (1024.0 ** 3)} GB"
             )
             # self.logger.info(f"Virtual memory: {virtual_memory}")
 
