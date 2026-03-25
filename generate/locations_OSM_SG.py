@@ -56,7 +56,12 @@ def process_section(miny, maxy, minx, maxx, tags, logger=None):
                 log_info(f"Processing section: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}")
 
             # Query OpenStreetMap with timeout (osmnx has built-in retry logic)
-            geoms = ox.features_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
+            # osmnx >=2.0 changed signature: bbox=(north, south, east, west)
+            try:
+                geoms = ox.features_from_bbox(bbox=(maxy, miny, maxx, minx), tags=tags).reset_index()
+            except TypeError:
+                # fallback for older osmnx API
+                geoms = ox.features_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
 
             # Ensure required columns exist
             if "geometry" not in geoms.columns or "building" not in geoms.columns:
