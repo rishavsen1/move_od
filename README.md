@@ -32,6 +32,12 @@ pip install -r requirements.txt
    
 ### 3. Start the Application
 
+**Using Command Line**
+```bash
+python cli.py -i
+```
+You can choose from list of US states and Counties, and other related information. Defaults are provided.
+
 **Using Streamlit**
 
 ```bash
