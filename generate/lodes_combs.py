@@ -487,7 +487,7 @@ class LodesComb:
         travel_time_to_work_path = f"{self.output_path}/census_data/travel_time_to_work.parquet"
 
         if os.path.exists(census_depart_times_path) and os.path.exists(travel_time_to_work_path):
-            self.logger.info("Loading cached census data from CSV files.")
+            self.logger.info("Loading cached census data from parquet files.")
             census_depart_times_df = pd.read_parquet(census_depart_times_path)
             travel_time_to_work_df = pd.read_parquet(travel_time_to_work_path)
         else:

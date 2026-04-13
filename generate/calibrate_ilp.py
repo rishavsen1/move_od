@@ -2,10 +2,23 @@ import pandas as pd
 import numpy as np
 import ast
 import random
+import gc
+import psutil
 
 np.random.seed(123)
 
 from generate.config import TIME_INTERVAL
+
+# ---------------------------------------------------------------------------
+# Memory helpers
+# ---------------------------------------------------------------------------
+def _mem_gb():
+    """Current process RSS in GB."""
+    return psutil.Process().memory_info().rss / (1024 ** 3)
+
+def _available_gb():
+    """Available system memory in GB."""
+    return psutil.virtual_memory().available / (1024 ** 3)
 
 
 def extract_latlon(x):
@@ -189,58 +202,78 @@ def fill_travel_times(routes, cand):
 
 
 def get_all_candidates(od_df, dep_pos, routing_df, tt_bin_names):
-    od_pairs = od_df[["h_geocode", "w_geocode"]].drop_duplicates()
-    # Count trips for each OD pair
+    """Build candidate (origin, departure_bin, destination) rows.
+
+    For large datasets the full Cartesian product can exceed available RAM.
+    We now build it in *per-origin chunks* so peak memory stays bounded.
+    """
     od_counts = od_df.groupby(["h_geocode", "w_geocode"]).size().reset_index(name="count")
 
-    # Calculate total trips by origin
-    total_by_origin = od_counts.groupby("h_geocode")["count"].sum().reset_index()
-    total_by_origin = dict(zip(total_by_origin["h_geocode"], total_by_origin["count"]))
+    total_by_origin = od_counts.groupby("h_geocode")["count"].sum()
+    od_counts["share"] = od_counts["count"] / od_counts["h_geocode"].map(total_by_origin)
+    od_counts.loc[od_counts["share"].isna(), "share"] = 0
 
-    # Calculate share
-    od_counts["share"] = od_counts.apply(
-        lambda row: (
-            row["count"] / total_by_origin[row["h_geocode"]]
-            if row["h_geocode"] in total_by_origin and total_by_origin[row["h_geocode"]] > 0
-            else 0
-        ),
-        axis=1,
+    od_share_df = od_counts[["h_geocode", "w_geocode", "share"]]
+    od_pos = (
+        od_share_df[od_share_df.share > 0]
+        .groupby("h_geocode")["w_geocode"]
+        .apply(list)
+        .to_dict()
     )
 
-    # Create final dataframe
-    od_share_df = od_counts[["h_geocode", "w_geocode", "share"]]
-
-    # positive destinations per origin  (r_od > 0)
-    od_tbl = od_share_df.copy()
-    od_pos = od_tbl[od_tbl.share > 0].groupby("h_geocode")["w_geocode"].apply(list).to_dict()
-
-    needs = []
-    for o in dep_pos.keys() & od_pos.keys():
-        for s in dep_pos[o]:
-            for d in od_pos[o]:
-                needs.append((o, s, d))
-    need_df = pd.DataFrame(needs, columns=["origin_geoid", "departure_time_bin", "destination_geoid"])
-    routing_df[["origin_geoid", "destination_geoid"]] = routing_df[["origin_geoid", "destination_geoid"]].astype(str)
-
-    # merge with existing routes
+    routing_df[["origin_geoid", "destination_geoid"]] = (
+        routing_df[["origin_geoid", "destination_geoid"]].astype(str)
+    )
     routes = routing_df[
-        [
-            "origin_geoid",
-            "departure_time_bin",
-            "destination_geoid",
-            "travel_time_min",
-            "travel_distance_mi",
-        ]
+        ["origin_geoid", "departure_time_bin", "destination_geoid",
+         "travel_time_min", "travel_distance_mi"]
     ]
 
-    cand = need_df.merge(
-        routes, on=["origin_geoid", "departure_time_bin", "destination_geoid"], how="left", indicator=True
-    )
+    # --- Build candidates per-origin to cap peak memory ----------------
+    origins_to_process = sorted(dep_pos.keys() & od_pos.keys())
+    print(f"Building candidates for {len(origins_to_process)} origins …")
 
-    cand = fill_travel_times(routes, cand)
+    CHUNK = 200          # origins per batch
+    all_chunks = []
+    for chunk_start in range(0, len(origins_to_process), CHUNK):
+        batch_origins = origins_to_process[chunk_start : chunk_start + CHUNK]
+        needs = []
+        for o in batch_origins:
+            for s in dep_pos[o]:
+                for d in od_pos[o]:
+                    needs.append((o, s, d))
+        if not needs:
+            continue
+        need_df = pd.DataFrame(needs, columns=["origin_geoid", "departure_time_bin", "destination_geoid"])
+        # downcast to save memory
+        need_df["departure_time_bin"] = need_df["departure_time_bin"].astype(np.int16)
 
-    cand_with_bins = add_census_time_bins(cand, tt_bin_names)
+        cand = need_df.merge(
+            routes,
+            on=["origin_geoid", "departure_time_bin", "destination_geoid"],
+            how="left",
+            indicator=True,
+        )
+        cand = fill_travel_times(routes, cand)
+        cand = add_census_time_bins(cand, tt_bin_names)
+        all_chunks.append(cand)
+        del needs, need_df, cand
+        gc.collect()
 
+    cand_with_bins = pd.concat(all_chunks, ignore_index=True)
+    del all_chunks
+    gc.collect()
+
+    # Downcast numerics to cut memory roughly in half
+    for col in ["departure_time_bin", "time_bin"]:
+        if col in cand_with_bins.columns:
+            cand_with_bins[col] = cand_with_bins[col].astype(np.int16)
+    for col in ["travel_time_min", "travel_distance_mi"]:
+        if col in cand_with_bins.columns:
+            cand_with_bins[col] = cand_with_bins[col].astype(np.float32)
+
+    print(f"Candidates table: {len(cand_with_bins):,} rows, "
+          f"{cand_with_bins.memory_usage(deep=True).sum() / 1e6:.0f} MB")
     return cand_with_bins
 
 
@@ -463,84 +496,113 @@ def _process_single_origin(args):
     return result
 
 
+def _safe_n_workers(cand_mem_bytes, n_workers_requested):
+    """Throttle workers so forked children don't blow past available RAM.
+
+    Each fork-ed worker inherits a copy-on-write view of the parent.
+    In practice the child touches most pages (pandas / numpy / pulp),
+    so we budget ~(cand_mem + 0.5 GB) per worker.
+    """
+    avail = _available_gb()
+    per_worker_gb = max(cand_mem_bytes / 1e9 + 0.5, 1.0)
+    safe = max(1, int(avail // per_worker_gb))
+    chosen = min(n_workers_requested, safe)
+    if chosen < n_workers_requested:
+        print(f"[mem-guard] Throttling workers {n_workers_requested} → {chosen} "
+              f"(avail {avail:.1f} GB, ~{per_worker_gb:.1f} GB/worker)")
+    return chosen
+
+
 def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes_dict, alpha=1.0, n_workers=None):
     """
     Integer calibration: assigns integer counts to (departure_time_bin, destination) cells
     to strictly match OD and departure time marginals for each origin,
     with an L1 penalty for deviation from the initial ODS distribution.
-    
+
     Parallelized version using multiprocessing for Streamlit compatibility.
-    
-    Parameters:
-    -----------
+
+    Large datasets are processed in *batches* so we never hold all work_items
+    in memory at once, and the worker pool is memory-throttled.
+
+    Parameters
+    ----------
     n_workers : int, optional
-        Number of parallel workers. Defaults to CPU count - 1. Set to 1 for sequential.
+        Number of parallel workers. Defaults to CPU count - 1, capped by
+        available RAM.  Set to 1 for sequential.
     """
     import os
     import pulp
-    from concurrent.futures import ProcessPoolExecutor, as_completed
     from tqdm import tqdm
     import numpy as np
     import pandas as pd
     import multiprocessing as mp
 
     od_distribution = calculate_od_distribution(od_df, lodes_dict)
-    
+
     # Determine number of workers
     if n_workers is None:
         n_workers = max(1, mp.cpu_count() - 1)
-    
+
     # Get all origins to process
-    origins = [o for o in cand.origin_geoid.unique() 
-               if o in od_distribution and o in p_dict and o in lodes_dict and int(lodes_dict[o]) > 0]
+    origins = [
+        o for o in cand.origin_geoid.unique()
+        if o in od_distribution and o in p_dict and o in lodes_dict and int(lodes_dict[o]) > 0
+    ]
 
     cplex_path = os.environ.get("CPLEX_PATH", "")
-    # Prepare arguments for each origin
-    work_items = []
-    for o in origins:
-        N_o = int(lodes_dict[o])
-        cand_subset = cand[cand.origin_geoid == o].copy()
-        if len(cand_subset) == 0:
-            continue
-        
-        od_probs = od_distribution[o]
-        p_bo = p_dict[o]
-        q_so = q_dict[o]
-        w_od_prop = w_dict.get(o, {}) if w_dict is not None else {}
-        
-        work_items.append((o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha, cplex_path))
-    
-    calibrated_df = []
+
+    # Memory-aware worker throttling
+    cand_mem = cand.memory_usage(deep=True).sum()
+    n_workers = _safe_n_workers(cand_mem, n_workers)
+
+    print(f"Calibrating {len(origins)} origins  "
+          f"(cand {cand_mem / 1e6:.0f} MB, {n_workers} workers, "
+          f"RSS {_mem_gb():.1f} GB, avail {_available_gb():.1f} GB)")
+
+    calibrated_dfs = []
     success_count = 0
     fallback_count = 0
-    
-    # Use ProcessPoolExecutor with fork context (compatible with Streamlit's mp.set_start_method("fork"))
-    if n_workers > 1 and len(work_items) > 1:
-        # Use fork context for Streamlit compatibility
-        ctx = mp.get_context("fork")
-        
-        with ctx.Pool(processes=n_workers) as pool:
-            results = list(tqdm(
-                pool.imap(_process_single_origin, work_items, chunksize=1),
-                total=len(work_items),
-                desc="Calibrating origins (ILP parallel)"
-            ))
-        
+
+    # --- Process in batches to bound peak memory ----------------------
+    BATCH = 200  # origins per batch
+    for batch_start in range(0, len(origins), BATCH):
+        batch_origins = origins[batch_start : batch_start + BATCH]
+
+        work_items = []
+        for o in batch_origins:
+            N_o = int(lodes_dict[o])
+            cand_subset = cand[cand.origin_geoid == o].copy()
+            if len(cand_subset) == 0:
+                continue
+            od_probs = od_distribution[o]
+            p_bo = p_dict[o]
+            q_so = q_dict[o]
+            w_od_prop = w_dict.get(o, {}) if w_dict is not None else {}
+            work_items.append((o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha, cplex_path))
+
+        if not work_items:
+            continue
+
+        batch_label = (f"Batch {batch_start // BATCH + 1}/"
+                       f"{(len(origins) + BATCH - 1) // BATCH}")
+
+        if n_workers > 1 and len(work_items) > 1:
+            ctx = mp.get_context("fork")
+            with ctx.Pool(processes=n_workers) as pool:
+                results = list(tqdm(
+                    pool.imap(_process_single_origin, work_items, chunksize=1),
+                    total=len(work_items),
+                    desc=f"ILP {batch_label}",
+                ))
+        else:
+            results = [
+                _process_single_origin(args)
+                for args in tqdm(work_items, desc=f"ILP {batch_label}")
+            ]
+
         for res in results:
             if res["df"] is not None:
-                calibrated_df.append(res["df"])
-                if res["status"] == "success":
-                    success_count += 1
-                elif res["status"] == "fallback":
-                    fallback_count += 1
-            elif res["status"] == "error":
-                print(f"Error with origin {res['origin']}: {res['error']}")
-    else:
-        # Sequential fallback for small workloads or n_workers=1
-        for args in tqdm(work_items, desc="Calibrating origins (ILP)"):
-            res = _process_single_origin(args)
-            if res["df"] is not None:
-                calibrated_df.append(res["df"])
+                calibrated_dfs.append(res["df"])
                 if res["status"] == "success":
                     success_count += 1
                 elif res["status"] == "fallback":
@@ -548,9 +610,15 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
             elif res["status"] == "error":
                 print(f"Error with origin {res['origin']}: {res['error']}")
 
+        # Free batch memory
+        del work_items, results
+        gc.collect()
+
     # Concatenate all results
-    if calibrated_df:
-        result = pd.concat(calibrated_df, ignore_index=True)
+    if calibrated_dfs:
+        result = pd.concat(calibrated_dfs, ignore_index=True)
+        del calibrated_dfs
+        gc.collect()
         print(f"Successfully calibrated {success_count} origins with ILP")
         print(f"Used fallback method for {fallback_count} origins")
         print(f"Total trips: {len(result)}")
@@ -563,12 +631,11 @@ def calibrate_with_strict_od_time_ilp(cand, od_df, p_dict, q_dict, w_dict, lodes
 def post_calibrating_assignment(calibrated_trips, origin_buildings, dest_buildings, ms_buildings_df):
     df = calibrated_trips[calibrated_trips["calibrated_weight"] > 0].copy()
 
-    synthetic_rows = []
-    for idx, row in df.iterrows():
-        for _ in range(int(row["calibrated_weight"])):
-            synthetic_rows.append(row)
-
-    synthetic_df = pd.DataFrame(synthetic_rows).reset_index(drop=True)
+    # Vectorised expansion — avoids the O(N×weight) Python loop that
+    # previously caused OOM on large datasets.
+    weights = df["calibrated_weight"].astype(int).values
+    repeat_idx = np.repeat(np.arange(len(df)), weights)
+    synthetic_df = df.iloc[repeat_idx].reset_index(drop=True)
 
     departure_time_bins = [
         (0, 299),

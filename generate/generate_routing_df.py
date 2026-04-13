@@ -156,7 +156,7 @@ def _build_arrays_from_df(od_df, desired_date, post_calibration=False):
 
 # ── Main entry point ───────────────────────────────────────────────────────
 
-def get_routed(od_df, desired_date, hourly_graphs_arg, post_calibration=False, parallel=True):
+def get_routed(od_df, desired_date, hourly_graphs_arg, post_calibration=False, parallel=False):
     hourly_graphs = hourly_graphs_arg
     n_pairs = len(od_df)
 

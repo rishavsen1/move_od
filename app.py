@@ -9,6 +9,9 @@ import numpy as np
 import geopandas as gpd
 import zipfile
 import io
+import json
+import pickle
+import base64
 
 from generate.lodes_read import LodesGen
 from generate.safegraph import Safegraph
@@ -25,6 +28,25 @@ from generate.utils import *
 from generate.logger import Logger
 
 import multiprocessing as mp
+
+
+def serialize_graphs(graphs_dict):
+    """Convert NetworkX graphs to JSON-serializable format using pickle+base64."""
+    serialized = {}
+    for key, graph in graphs_dict.items():
+        pickled = pickle.dumps(graph)
+        serialized[str(key)] = base64.b64encode(pickled).decode('utf-8')
+    return serialized
+
+
+def deserialize_graphs(serialized_dict):
+    """Convert JSON data back to NetworkX graphs from pickle+base64 encoding."""
+    deserialized = {}
+    for key, encoded_str in serialized_dict.items():
+        pickled = base64.b64decode(encoded_str.encode('utf-8'))
+        deserialized[key] = pickle.loads(pickled)
+    return deserialized
+
 
 if __name__ == "__main__":
     mp.set_start_method("fork", force=True)
@@ -473,7 +495,17 @@ if begin:
         if ms_enabled:
             logger.info(f"Microsoft Building Footprints buildings: {ms_buildings_df.shape[0]}")
 
-        G, hourly_graphs = read_inrix_data(start_date, inrix_path, inrix_conversion_path)
+        output_graphs_path = f"{output_path}/hourly_graphs.json"
+        if not os.path.exists(output_graphs_path):
+            G, hourly_graphs = read_inrix_data(start_date, inrix_path, inrix_conversion_path)
+            with open(output_graphs_path, 'w') as f:
+                json.dump(serialize_graphs(hourly_graphs), f)
+            logger.info(f"Hourly graphs saved to {output_graphs_path}")
+        else:
+            with open(output_graphs_path, 'r') as f:
+                hourly_graphs = deserialize_graphs(json.load(f))
+            G = list(hourly_graphs.values())[0]
+            logger.info(f"Hourly graphs loaded from {output_graphs_path}")
 
         success = False
         if "LODES" in choice:
@@ -530,20 +562,23 @@ if begin:
                     logger.info("Reading stored routing df")
                     routing_df = pd.read_parquet(routing_df_output_path)
 
-                # perforing mean speed shift and generating new graphs
-                hourly_graphs_adjusted = perform_mean_speed_shift(
-                    routing_df=routing_df, travel_time_to_work_by_geoid=travel_time_to_work_df,
-                    hourly_graphs=hourly_graphs,
-                )
-
                 if not os.path.exists(post_mssr_routing_df_output_path):
                     logger.info("Generating post mssr routing df")
                     routing_df = pd.read_parquet(routing_df_output_path)
-                    # perforing mean speed shift and generating new graphs
-                    hourly_graphs_adjusted = perform_mean_speed_shift(
-                        routing_df=routing_df, travel_time_to_work_by_geoid=travel_time_to_work_df,
-                        hourly_graphs=hourly_graphs,
-                    )
+
+                    # performing mean speed shift and generating new graphs
+                    if not os.path.exists(adjusted_graphs_path):
+                        hourly_graphs_adjusted = perform_mean_speed_shift(
+                            routing_df=routing_df, travel_time_to_work_by_geoid=travel_time_to_work_df,
+                            hourly_graphs=hourly_graphs,
+                        )
+                        with open(adjusted_graphs_path, 'w') as f:
+                            json.dump(serialize_graphs(hourly_graphs_adjusted), f)
+                        logger.info(f"Adjusted graphs saved to {adjusted_graphs_path}")
+                    else:
+                        with open(adjusted_graphs_path, 'r') as f:
+                            hourly_graphs_adjusted = deserialize_graphs(json.load(f))
+                        logger.info(f"Adjusted graphs loaded from {adjusted_graphs_path}")
 
                     # getting routed trips and travel times post mssr
                     post_mssr_routing_df = get_routed(
@@ -554,6 +589,10 @@ if begin:
                 else:
                     logger.info("Reading stored post mssr routing df")
                     post_mssr_routing_df = pd.read_parquet(post_mssr_routing_df_output_path)
+                    if os.path.exists(adjusted_graphs_path):
+                        with open(adjusted_graphs_path, 'r') as f:
+                            hourly_graphs_adjusted = deserialize_graphs(json.load(f))
+                        logger.info(f"Adjusted graphs loaded from {adjusted_graphs_path}")
 
                 # calibrated trips
                 calibrated_df = calibrate_with_ilp(
