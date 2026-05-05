@@ -627,7 +627,10 @@ class LodesComb:
             results.append((day, assigned_od))
             self.logger.info(f"Saved results for day {day}")
 
-        save_building_dictionaries(origin_buildings, dest_buildings, self.output_path)
+        try:
+            save_building_dictionaries(origin_buildings, dest_buildings, self.output_path)
+        except Exception as _e:
+            self.logger.warning(f"Could not save building dictionaries (non-critical): {_e}")
 
         lodes_output_dfs = []
         days = []

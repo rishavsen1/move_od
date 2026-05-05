@@ -454,20 +454,24 @@ def get_travel_time_dict(mode_type, trips_dict):
 def get_census_data(api_key, api_url, table_name, state_fips, county_fips, block_groups, county_only):
     url = api_url
 
+    # Use anonymous access if key is not a real key
+    use_key = api_key and not api_key.startswith("NO_KEY") and not api_key.startswith("YOUR_")
+
     if county_only:
         params = {
             "get": f"NAME,group({table_name})",
             "for": f"county:{county_fips}",
             "in": f"state:{state_fips}",
-            "key": api_key,
         }
     else:
         params = {
             "get": f"NAME,group({table_name})",
             "for": f"block group:{block_groups}",
             "in": f"state:{state_fips} county:{county_fips}",
-            "key": api_key,
         }
+
+    if use_key:
+        params["key"] = api_key
 
     response = requests.get(url, params=params)
     print(response.url)
