@@ -101,3 +101,6 @@ routing/
 .vscode
 *cache*/
 *.cache
+graphify-out
+.env
+CLAUDE.md
