@@ -1,0 +1,60 @@
+title: MOVE-OD
+description: Modern Origin-Destination Data Generation Platform
+theme: jekyll-theme-cayman
+plugins:
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-readme-index
+  - jekyll-titles-from-headings
+
+relative_links:
+  enabled: true
+  collections: true
+
+titles_from_headings:
+  enabled: true
+  strip_title: true
+  collections: true
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+# Custom navigation
+navigation:
+  - title: Home
+    url: /
+  - title: User Guide
+    url: /USER_GUIDE
+  - title: Quick Start
+    url: /QUICKSTART
+  - title: Troubleshooting
+    url: /TROUBLESHOOTING
+  - title: GitHub
+    url: https://github.com/yourusername/move_od
+
+# SEO
+lang: en-US
+author: Your Name
+twitter:
+  username: yourusername
+  card: summary_large_image
+social:
+  name: MOVE-OD
+  links:
+    - https://github.com/yourusername/move_od
+
+# Google Analytics (optional)
+# google_analytics: UA-XXXXXXXXX-X
+
+# Exclude from processing
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/
+  - README_WEB_APP.md

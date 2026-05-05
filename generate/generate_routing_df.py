@@ -1,3 +1,10 @@
+import os
+import sys
+
+# CRITICAL: Set environment variables BEFORE any other imports to suppress Streamlit in workers
+os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
+os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
+
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import LineString

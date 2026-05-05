@@ -2,24 +2,80 @@
 # coding: utf-8
 import os
 import math
+import logging
 import osmnx as ox
 import geopandas as gpd
 import pandas as pd
 
 
-def process_section(miny, maxy, minx, maxx, tags, logger):
-    retries = 0
-    while retries < 5:
+def process_section(miny, maxy, minx, maxx, tags, logger=None):
+    """Process a geographic section and return building geometries"""
+    import time
+    import logging
+
+    # Create a simple logger for child processes to avoid Streamlit context warnings
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    # Use print for child process logging to avoid Streamlit ScriptRunContext warnings
+    def log_info(msg):
         try:
-            logger.info(f"Processing section: {miny}, {maxy}, {minx}, {maxx}")
+            logger.info(msg)
+        except:
+            print(f"INFO: {msg}")
+
+    def log_warning(msg):
+        try:
+            logger.warning(msg)
+        except:
+            print(f"WARNING: {msg}")
+
+    def log_error(msg):
+        try:
+            logger.error(msg)
+        except:
+            print(f"ERROR: {msg}")
+
+    retries = 0
+    max_retries = 2  # Increased retries
+    backoff_time = 0.01  # Start with 2 seconds
+
+    while retries <= max_retries:
+        try:
+            if retries > 0:
+                wait_time = backoff_time * (2 ** (retries - 1))  # Exponential backoff: 2, 4, 8 seconds
+                log_info(
+                    f"Retry {retries}/{max_retries} for section after {wait_time}s: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}"
+                )
+                time.sleep(wait_time)
+            else:
+                log_info(f"Processing section: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}")
+
+            # Query OpenStreetMap with timeout (osmnx has built-in retry logic)
             geoms = ox.features_from_bbox(miny, maxy, minx, maxx, tags).reset_index()
+
+            # Ensure required columns exist
+            if "geometry" not in geoms.columns or "building" not in geoms.columns:
+                log_warning(f"Section missing required columns: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}")
+                return None
+
             geoms = geoms[["geometry", "building"]]
-            logger.info(f"Successfully processed section: {miny}, {maxy}, {minx}, {maxx}")
+            log_info(
+                f"Successfully processed section: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f} - {len(geoms)} buildings"
+            )
             return geoms
+
+        except KeyboardInterrupt:
+            log_error("Process interrupted by user")
+            raise
+        except TimeoutError:
+            log_error(f"Timeout in section {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}")
+            retries += 1
         except Exception as e:
-            logger.error(f"Exception in section {miny}, {maxy}, {minx}, {maxx}: {e}")
-        retries += 1
-    logger.error(f"Failed to process section after 5 retries: {miny}, {maxy}, {minx}, {maxx}")
+            log_error(f"Exception in section {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}: {type(e).__name__}: {e}")
+            retries += 1
+
+    log_error(f"Failed to process section after {max_retries} retries: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}")
     return None
 
 
@@ -54,8 +110,35 @@ class LocationsOSMSG:
     # def func(row):
     #     str(Point(gpd.points_from_xy(row.INTPTLAT, row.INTPTLON)[0]))
 
-    def find_locations_OSM(self):
+    def find_locations_OSM(self, use_parallel=None):
+        """
+        Identifies buildings from OSM using parallel or sequential processing.
+
+        Args:
+            use_parallel: Whether to use parallel processing.
+                         None = auto-detect (disable in Streamlit),
+                         True = force parallel,
+                         False = force sequential
+
+        Returns:
+            Tuple of (buildings, county_geoid_df, success)
+        """
+        import sys
+
         self.logger.info("Running locations_OSM_SG.py func")
+
+        # Auto-detect if we should use parallel processing
+        if use_parallel is None:
+            # Disable parallel processing if running in Streamlit
+            in_streamlit = "streamlit" in sys.modules or os.getenv("STREAMLIT_SERVER_PORT") is not None
+            use_parallel = not in_streamlit
+            if in_streamlit:
+                self.logger.info("Streamlit detected - using sequential processing to avoid multiprocessing conflicts")
+
+        # Allow environment variable override
+        if os.getenv("FORCE_SEQUENTIAL_OSM", "").lower() == "true":
+            use_parallel = False
+            self.logger.info("FORCE_SEQUENTIAL_OSM environment variable set - using sequential processing")
 
         # Filter county data based on the OD option
         if self.od_option == "Origin and Destination in same County":

@@ -356,4 +356,4 @@ class LodesComb:
             combined_df.to_csv(f"{self.data_path}/lodes_combs/lodes_{day}.csv", index=False)
             self.logger.info(f"Saved results for day {day}")
 
-        self.logger.info("All days generated")
+        # self.logger.info("All days generated")

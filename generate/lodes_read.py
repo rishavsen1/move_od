@@ -19,9 +19,9 @@ class LodesGen:
 
     def read_and_process_lodes_file(self, lodes_path):
         # Read CSV file and rename columns
-        temp_df = pd.read_csv(lodes_path).rename(columns={"S000": "total_jobs"})[
-            ["h_geocode", "w_geocode", "total_jobs"]
-        ]
+        temp_df = pd.read_csv(lodes_path, dtype={"h_geocode": str, "w_geocode": str, "S000": float}).rename(
+            columns={"S000": "total_jobs"}
+        )[["h_geocode", "w_geocode", "total_jobs"]]
 
         # Convert geocode columns
         temp_df.h_geocode = temp_df.h_geocode.astype(str).str[:-3]

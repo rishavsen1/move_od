@@ -349,6 +349,8 @@ def _process_single_origin(args):
     import pulp
     import numpy as np
     import pandas as pd
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    import multiprocessing
 
     o, cand_subset, od_probs, p_bo, q_so, w_od_prop, N_o, alpha, cplex_path = args
 

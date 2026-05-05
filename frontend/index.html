@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MOVE-OD - Origin-Destination Data Generation</title>
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.css"
+    />
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>MOVE-OD</h1>
+        <p class="subtitle">
+          Origin-Destination Point-to-Point Data Generation
+        </p>
+      </header>
+
+      <!-- Configuration Form -->
+      <div class="card" id="config-section">
+        <!-- <h2>Configuration</h2> -->
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="state-select">State</label>
+            <select id="state-select" class="form-control">
+              <option value="">Loading states...</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="county-select">County</label>
+            <select id="county-select" class="form-control" disabled>
+              <option value="">Select a state first</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="start-date">Start Date</label>
+            <input
+              type="date"
+              id="start-date"
+              class="form-control"
+              value="2025-03-10"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="end-date">End Date</label>
+            <input
+              type="date"
+              id="end-date"
+              class="form-control"
+              value="2025-03-10"
+            />
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="lodes-year">LODES Data Year</label>
+            <input
+              type="text"
+              id="lodes-year"
+              class="form-control"
+              value="2022"
+              placeholder="Latest: 2022"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="tiger-year">TIGER Shapefile Year</label>
+            <input
+              type="text"
+              id="tiger-year"
+              class="form-control"
+              value="2024"
+              placeholder="Latest: 2024"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="inrix-path">INRIX Data Path (Optional)</label>
+            <input
+              type="text"
+              id="inrix-path"
+              class="form-control"
+              placeholder="./data/inrix/..."
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="inrix-conversion-path"
+              >INRIX Conversion Path (Optional)</label
+            >
+            <input
+              type="text"
+              id="inrix-conversion-path"
+              class="form-control"
+              placeholder="./data/inrix/..."
+            />
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group checkbox-group">
+            <label>
+              <input type="checkbox" id="use-ms-buildings" checked />
+              Use Global Buildings Footprint
+            </label>
+          </div>
+          <!-- 
+          <div class="form-group checkbox-group">
+            <label>
+              <input type="checkbox" id="use-safegraph" />
+              Use Safegraph Data
+            </label>
+          </div> -->
+        </div>
+
+        <div class="form-group">
+          <label for="output-path">Output Path</label>
+          <input type="text" id="output-path" class="form-control" readonly />
+        </div>
+
+        <button id="begin-btn" class="btn btn-primary btn-large">
+          <span class="btn-text">BEGIN PROCESSING</span>
+        </button>
+      </div>
+
+      <!-- Progress Section -->
+      <div class="card" id="progress-section" style="display: none">
+        <h2>Processing Status</h2>
+
+        <div class="progress-info">
+          <div class="progress-header">
+            <span id="progress-status">Queued</span>
+            <span id="progress-percentage">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+          <p id="progress-message" class="progress-message">Initializing...</p>
+        </div>
+
+        <div id="error-section" class="error-box" style="display: none">
+          <strong>Error:</strong>
+          <p id="error-message"></p>
+        </div>
+      </div>
+
+      <!-- Results Section -->
+      <div class="card" id="results-section" style="display: none">
+        <div class="results-header">
+          <h2>Results</h2>
+          <button id="reset-btn" class="btn btn-secondary">
+            🔄 Reset and Start New Process
+          </button>
+        </div>
+
+        <!-- Metrics -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-value" id="origins-count">-</div>
+            <div class="metric-label">Total Origins</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="destinations-count">-</div>
+            <div class="metric-label">Total Destinations</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="block-groups-count">-</div>
+            <div class="metric-label">Census Block Groups</div>
+          </div>
+        </div>
+
+        <button id="download-btn" class="btn btn-success btn-large">
+          📥 Download All Calibrated Files (ZIP)
+        </button>
+
+        <!-- Map Visualization -->
+        <div class="map-section">
+          <h3>Origin-Destination Locations Map</h3>
+
+          <div class="map-controls">
+            <div class="form-group">
+              <label for="map-type">Display Type</label>
+              <select id="map-type" class="form-control">
+                <option value="both">Both Origins and Destinations</option>
+                <option value="origins">Origins Only</option>
+                <option value="destinations">Destinations Only</option>
+                <option value="heatmap">OD Heatmap</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="sample-size"
+                >Sample Size: <span id="sample-size-value">1000</span></label
+              >
+              <input
+                type="range"
+                id="sample-size"
+                class="range-control"
+                min="100"
+                max="5000"
+                step="100"
+                value="1000"
+              />
+            </div>
+
+            <button id="update-map-btn" class="btn btn-primary">
+              Update Map
+            </button>
+          </div>
+
+          <div class="map-legend">
+            <span id="map-legend-text"
+              >🟢 Green: Origins (Residential) | 🔴 Red: Destinations
+              (Workplace)</span
+            >
+          </div>
+
+          <div id="map" class="map-container"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <p>MOVE-OD Data Generation System | Version 1.0.0</p>
+    </footer>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <!-- Custom JS -->
+    <script src="app.js"></script>
+  </body>
+</html>

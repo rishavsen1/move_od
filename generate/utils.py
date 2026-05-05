@@ -18,7 +18,9 @@ import zipfile
 import subprocess
 from io import StringIO
 from multiprocessing import cpu_count, Pool
+from tqdm import tqdm
 import hashlib
+
 
 from generate.config import CENSUS_API_KEY
 
@@ -254,7 +256,7 @@ def download_shapefile(logger, url, compressed_path):
         logger.info(f"File downloaded and saved as: {compressed_path}")
 
     else:
-        logger.error(f"Failed to download the file: Status code {response.status_code}")
+        logger.error(f"Failed to download the shapefile: Status code {response.status_code}")
 
 
 def download_lodes(logger, state, state_abbr, lodes_code, year):
@@ -320,7 +322,7 @@ def download_and_decompress(type, logger, url, compressed_path, decompressed_pat
         return True
 
     else:
-        logger.error(f"Failed to download the file: Status code {response.status_code}")
+        logger.error(f"Failed to download the LODES file: Status code {response.status_code}")
         return False
 
 
@@ -534,7 +536,7 @@ def get_census_data_wrapper(
         other_cols = ["GEO_ID", "state", "county"]
 
     df_renamed = df[list(columns_to_be_renamed.keys()) + other_cols].rename(columns_to_be_renamed, axis=1)
-    df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1].lstrip("0"))
+    df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1])
     df_renamed["total_estimate"] = df_renamed["total_estimate"].astype(int)
 
     for column in df_renamed.columns:
@@ -565,7 +567,7 @@ def get_census_work_time(
         other_cols = ["GEO_ID", "state", "county"]
 
     df_renamed = df[list(columns_to_be_renamed.keys()) + other_cols].rename(columns_to_be_renamed, axis=1)
-    df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1].lstrip("0"))
+    df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1])
     df_renamed["total_estimate"] = df_renamed["total_estimate"].astype(float)
 
     for column in df_renamed.columns:
@@ -624,7 +626,7 @@ def get_census_travel_time_data(
     df_renamed = df[list(columns_to_be_renamed.keys()) + ["GEO_ID", "state", "county"]].rename(
         columns_to_be_renamed, axis=1
     )
-    df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1].lstrip("0"))
+    df_renamed["GEO_ID"] = df_renamed["GEO_ID"].apply(lambda x: x.split("US")[1])
     df_renamed["total_estimate"] = df_renamed["total_estimate"].astype(int)
 
     for column in df_renamed.columns:

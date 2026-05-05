@@ -54,6 +54,11 @@ if __name__ == "__main__":
 # # Ensure the script runs from the base folder of the repository
 # base_path = os.path.dirname(os.path.abspath(__file__))
 # os.chdir(base_path)
+import logging
+import warnings
+
+logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
 
 
 def zip_and_download(output_path):
@@ -69,7 +74,7 @@ def zip_and_download(output_path):
 
     # Add download button to Streamlit
     st.download_button(
-        label="Download All Calibrated Files (ZIP)",
+        label="Download All Calibrated OD Files (ZIP)",
         data=zip_buffer,
         file_name="calibrated_move_od.zip",
         mime="application/zip",
@@ -238,7 +243,7 @@ states, state_fips, counties_in_state, county_fips = get_states_and_counties()
 with col1:
     state = st.selectbox("State", options=list(states.keys()), index=42)
 with col2:
-    county = st.selectbox("County", options=sorted(counties_in_state[state]), index=32)
+    county = st.selectbox("County", options=sorted(counties_in_state[state]), index=0)
 with col3:
     st.session_state.dates = st.date_input(
         "Enter date range",
@@ -609,12 +614,12 @@ if begin:
                 routing_df = get_routed(
                     od_df=calibrated_df,
                     desired_date=start_date,
-                    hourly_graphs_arg=hourly_graphs,
+                    hourly_graphs=hourly_graphs,
                     post_calibration=True,
                 )
 
                 calibrated_df_output_path = f"{calibrated_output_path}/{day}.csv"
-                calibrated_df.to_csv(calibrated_df_output_path)
+                routing_df.to_csv(calibrated_df_output_path)
                 st.session_state.calibrated_output_path = calibrated_output_path
 
             st.success("Calibrated ODs generated")
@@ -628,6 +633,8 @@ if begin:
                 "county_geoid_df": county_geoid_df,
                 "logger": logger,
             }
+
+        logger.info("All days generated")
 
 if st.session_state.processing_complete:
 
