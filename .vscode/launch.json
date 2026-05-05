@@ -1,6 +1,23 @@
 {
   "version": "0.2.0",
   "configurations": [
+        {
+      "name": "Python: cmd",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/cli.py",
+      "args": [
+        "--county",
+        "Trousdale",
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "python": "${workspaceFolder}/.venv/bin/python"
+    },
     {
       "name": "Python: Streamlit",
       "type": "debugpy",
