@@ -6,10 +6,6 @@ import logging
 import osmnx as ox
 import geopandas as gpd
 import pandas as pd
-import multiprocessing
-from multiprocessing import Pool
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from tqdm import tqdm
 
 
 def process_section(miny, maxy, minx, maxx, tags, logger=None):
@@ -164,119 +160,17 @@ class LocationsOSMSG:
         if os.path.exists(buildings_file):
             buildings = gpd.read_file(buildings_file)
         else:
-            num_workers = max(multiprocessing.cpu_count() - 1, 1)
-            splits = self.split_bbox(miny, maxy, minx, maxx, num_workers)
-            # Pass None as logger to avoid Streamlit ScriptRunContext warnings in child processes
-            func_args = [(s[0], s[1], s[2], s[3], {"building": True}, None) for s in splits]
-
-            results = []
-
-            if use_parallel:
-                self.logger.info(f"Processing {len(func_args)} sections with {num_workers} workers (parallel)...")
-
-                # Use ProcessPoolExecutor with timeout and better error handling
-                try:
-                    with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                        # Submit all tasks
-                        future_to_args = {executor.submit(process_section, *args): args for args in func_args}
-
-                        # Process completed futures with timeout
-                        completed = 0
-                        for future in as_completed(future_to_args, timeout=600):  # 10 min timeout per task
-                            completed += 1
-                            try:
-                                result = future.result(timeout=60)  # 1 min to get result
-                                if result is not None:
-                                    results.append(result)
-                                    self.logger.info(f"Progress: {completed}/{len(func_args)} sections completed")
-                                else:
-                                    self.logger.warning(f"Section {future_to_args[future]} returned None")
-                            except TimeoutError:
-                                self.logger.error(f"Timeout processing section {future_to_args[future]}")
-                                future.cancel()
-                            except Exception as e:
-                                self.logger.error(f"Error processing section {future_to_args[future]}: {e}")
-
-                        self.logger.info(
-                            f"Completed processing {completed} sections, got {len(results)} valid results"
-                        )
-
-                except TimeoutError:
-                    self.logger.error("Overall timeout exceeded waiting for sections to complete")
-                    self.logger.info("Falling back to sequential processing...")
-                    use_parallel = False  # Fall back to sequential
-                except Exception as e:
-                    self.logger.error(f"Fatal error in multiprocessing: {e}")
-                    self.logger.info("Falling back to sequential processing...")
-                    use_parallel = False  # Fall back to sequential
-                finally:
-                    # Ensure all processes are terminated
-                    try:
-                        executor.shutdown(wait=False, cancel_futures=True)
-                    except:
-                        pass
-
-                # Combine results and save to file
-                if results:
-                    self.logger.info(f"Combining {len(results)} building sections...")
-                    buildings = pd.concat(results, ignore_index=True)
+            # Single process: process the entire bbox
+            try:
+                buildings = process_section(miny, maxy, minx, maxx, {"building": True}, self.logger)
+                if buildings is not None:
                     buildings.to_file(buildings_file, driver="GeoJSON")
-                    self.logger.info(f"Saved {len(buildings)} buildings to {buildings_file}")
                 else:
-                    self.logger.error("No results were obtained from multiprocessing.")
-                    return None, None, False
-
-            # Sequential processing fallback
-            if not use_parallel or len(results) == 0:
-
-                self.logger.info(
-                    f"Processing entire area as single section: {miny:.4f}, {maxy:.4f}, {minx:.4f}, {maxx:.4f}"
-                )
-
-                result = process_section(miny, maxy, minx, maxx, {"building": True}, self.logger)
-
-                if result is not None:
-                    buildings = result
-                    buildings.to_file(buildings_file, driver="GeoJSON")
-                    self.logger.info(f"Saved {len(buildings)} buildings to {buildings_file}")
-                else:
-                    self.logger.error("Processing returned None - no buildings found.")
-                    return None, None, False
-
-            # except KeyboardInterrupt:
-            #     self.logger.error("Processing interrupted by user")
-            #     raise
-            # except Exception as e:
-            #     self.logger.error(f"Error processing bounding box: {e}")
-            #     return None, None, False
-
-            # self.logger.info(f"Processing {len(func_args)} sections sequentially...")
-            # results = []
-            # # Use tqdm for progress tracking in sequential mode
-            # iterable = tqdm(
-            #     enumerate(func_args),
-            #     total=len(func_args),
-            #     desc="Processing OSM sections",
-            # )
-
-            # for i, args in iterable:
-            #     self.logger.info(f"Processing section {i+1}/{len(func_args)}...")
-            #     try:
-            #         result = process_section(*args)
-            #         if result is not None:
-            #             results.append(result)
-            #             self.logger.info(
-            #                 f"Section {i+1}/{len(func_args)} completed successfully - {len(result)} buildings"
-            #             )
-            #         else:
-            #             self.logger.warning(f"Section {i+1}/{len(func_args)} returned None")
-            #     except KeyboardInterrupt:
-            #         self.logger.error("Processing interrupted by user")
-            #         raise
-            #     except Exception as e:
-            #         self.logger.error(f"Error processing section {i+1}/{len(func_args)}: {e}")
-
-            # self.logger.info(f"Sequential processing completed, got {len(results)} valid results")
+                    self.logger.error("Failed to process the section.")
+                    return None
+            except Exception as e:
+                self.logger.error(f"Error processing section: {e}")
+                return None
 
         # Determine UTM zone
         mean_lon = minx + (maxx - minx) / 2

@@ -1,172 +1,142 @@
 <!-- README: user-focused web app guide. Short, practical, avoids backend/API internals. -->
 
-**MoveOD: Synthesizing Origin-Destination Commute Distribution from U.S. Census Data**
+# MoveOD: Synthesizing Origin-Destination Commute Distribution from U.S. Census Data
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
 [![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)](https://linux.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<!-- ---
+MoveOD generates calibrated origin-destination commute data for a U.S. state and county using Census, road network, and building-footprint data. The project is designed to run either from the command line or through a Streamlit web app.
 
-## 📖 Table of Contents
-
-- [Overview](#overview)
-- [Quick Start](#quick-start)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Documentation](#documentation)
-- [Installation](#installation)
-- [Usage](#usage)
-- [API Reference](#api-reference)
-- [Deployment](#deployment)
-- [Migration from Streamlit](#migration-from-streamlit)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing) -->
-
-<!-- --- -->
-
-## Overview
-
-MOVE-OD is a comprehensive transportation data generation system that creates calibrated origin-destination (OD) trip data for transportation analysis.
-
-You can access the full paper here: [ArXiV](https://arxiv.org/abs/2510.18858)
-
-### What It Does
-
-1. **Processes LODES Data** - Employment data from LEHD Origin-Destination Employment Statistics
-2. **Integrates Building Footprints** - Microsoft Global Buildings and OpenStreetMap data
-3. **Performs Routing** - Uses INRIX traffic data or OSM for travel time calculations
-4. **Calibrates with ILP** - Integer Linear Programming for census-accurate trip generation
-5. **Generates OD Trips** - Complete origin-destination trip tables with timing
+You can access the paper here: [ArXiv](https://arxiv.org/abs/2510.18858)
 
 <p align="center">
   <img src="files/moveod_pipeline.png" alt="MoveOD pipeline" width="800" />
 </p>
 
+## Overview
+
+MoveOD is a transportation data generation pipeline that combines public spatial and commute data to synthesize origin-destination trip tables.
+
+### What it does
+
+1. Processes LODES employment flows from the U.S. Census.
+2. Integrates building footprints from Microsoft Global Buildings and OpenStreetMap.
+3. Routes trips on road graphs using OSM defaults or INRIX speeds when available.
+4. Calibrates generated trips with Integer Linear Programming.
+5. Produces county-level OD outputs with sampled locations and departure times.
+
 ## Quickstart
 
-### 1. Configure Census API Key
+### 1. Requirements
 
-Move-OD requires a free Census API key to download LODES and geographic data.
+- Python 3.12 on Linux.
+- A free U.S. Census API key for LODES and geographic downloads.
 
-1. Get your free API key from: [Census API Key Signup](https://api.census.gov/data/key_signup.html)
-2. Copy the config template:
+### 2. Configure the Census API key
+
+1. Get a free key from [Census API Key Signup](https://api.census.gov/data/key_signup.html).
+2. Copy the environment template:
+
    ```bash
    cp .env.example .env
    ```
-3. Edit `.env` and replace `YOUR_CENSUS_API_KEY_HERE` with your actual key
 
-### 2. Install Dependencies
+3. Edit `.env` and replace `YOUR_CENSUS_API_KEY_HERE` with your key.
+
+### 3. Install dependencies
 
 ```bash
-cd move_od
 pip install -r requirements.txt
+```
+
+If you want to use the backend web app, install its extra dependencies too:
+
+```bash
 pip install -r backend/requirements.txt
 ```
 
-### 3. Start the Application
+Optional: if you have IBM CPLEX installed, set its path before running the pipeline to speed up ILP calibration.
 
-**Option A: Using Streamlit (provides step by step tracking) (recommended)**
+```bash
+export CPLEX_PATH=</path/to/cplex>
+```
+
+### 4. Start the app
+
+Command line:
+
+```bash
+python cli.py -i
+```
+
+Streamlit:
 
 ```bash
 streamlit run app.py
 ```
 
-**Option B: Using startup script**
 
-```bash
-./start_webapp.sh  # Linux/Mac
-# or
-start_webapp.bat   # Windows
-```
-
-<!--
-**Option C: Manual start**
-
-```bash
-# Terminal 1: Backend
-cd backend && python app.py
-
-# Terminal 2: Frontend
-cd frontend && python -m http.server 8080
-``` -->
-
----
-
-## Using the web app — concise steps
-
-1. Select the State and County you want to generate OD data for.
-2. Choose the available data sources for the region (Microsoft buildings provides building location without any tags).
-3. (Optional) Supply auxiliary inputs if available (e.g., INRIX speeds or local files) using the UI controls.
-4. Choose a date (or range). This parameter is useful when using real time road speeds like INRIX.
-5. Click the "Begin processing" button to start.
-6. Monitor progress in the UI. When finished, download results from the Output section or open the output folder.
 
 <p align="center">
   <img src="files/moveod_interface.png" alt="MoveOD interface" width="800" />
 </p>
 
-Typical runtime: small regions/minimal options ~20 minutes; larger regions ~ 120 minutes.
+## Using the web app
 
-## Output location & format
+1. Select the state and county you want to process.
+2. Choose the available data sources for the region.
+3. Add optional inputs such as INRIX speeds if you have them.
+4. Pick a date or date range when using time-dependent traffic data.
+5. Click the start button to run the pipeline.
+6. Watch progress in the UI and download the output when it finishes.
 
-- Default output folder: `move_OD`.
-- Files are exported as Parquet for compact, fast reads.
-- Typical columns:
-  - origin/destination GEOIDs (origin_geocode, destiantion_geocode)
-  - sampled coordinates (home_loc_lat, home_loc_lon, work_loc_lat, work_loc_lon)
-  - departure_time
-  - estimated time to travel to work
+Typical runtime is about 20 minutes for smaller regions and up to around 2 hours for larger ones.
 
----
+## Output
 
-### 3. Access the Application
+Outputs are written under `move_OD/{state}/{county}/{start_date}_{end_date}/`.
 
-Open your browser to: **http://localhost:8080**
+Key results include:
 
-API Documentation: **http://localhost:8000/docs**
+- `calibrated_move_od/{day}.csv` for the final OD trips.
+- `intermediate/{day}/routing_df.parquet` for routed trips.
+- `intermediate/{day}/post_mssr_routing_df.parquet` after speed rescaling.
+- `intermediate/{day}/hourly_graphs_adjusted.json` for adjusted graphs.
 
-<!-- ---
+Typical columns include origin and destination GEOIDs, sampled home and work coordinates, departure time, and estimated travel time.
 
-## Architecture
+## Reproducibility
 
+The paper figures can be regenerated from the output directory after a run:
+
+```bash
+python analysis/figures_from_output.py --state Tennessee --county Hamilton
 ```
-┌─────────────┐
-│   Browser   │
-│  Port 8080  │
-└──────┬──────┘
-       │
-       │ HTTP/AJAX
-       │
-   ┌───┴────┐
-   │        │
-   ▼        ▼
-┌──────┐ ┌──────┐
-│Front-│ │Back- │
-│ end  │◄┤ end  │
-│(HTML)│ │(API) │
-└──────┘ └───┬──┘
-             │
-        ┌────┼────┐
-        ▼    ▼    ▼
-     [Data][Jobs][Process]
-``` -->
 
-<!-- 3. Open the UI in your browser (Streamlit will show the local URL, usually http://localhost:8501). -->
+The notebook in `analysis/figures_1_2.ipynb` shows the same workflow for Figures 1 and 2. Figure 3 in the paper is a downstream demonstration of how the generated data can be used.
 
-<!-- If you want a quick preview of a Parquet file in Python:
+Because road speeds may be sampled and INRIX is optional, reruns are expected to be qualitatively similar rather than byte-for-byte identical.
 
-```python
-import pandas as pd
-df = pd.read_parquet('generated_OD/sample.parquet')
-print(df.head()) -->
+<p align="center">
+  <img src="files/moveod_plots.png" alt="MoveOD plots" width="800" />
+</p>
+
+## Troubleshooting
+
+If you see Streamlit warnings about missing script context during parallel processing, they are expected and harmless.
+
+If you want to force sequential execution, set:
+
+```bash
+export FORCE_SEQUENTIAL_OSM=true
+```
+
+If OSM queries time out, try a smaller county, wait a few minutes, or rerun during off-peak hours. The pipeline already retries failed requests and falls back to sequential processing when needed.
 
 ## Citation
 
-If you use Move-OD for academic work or reports, please cite the project. Replace placeholders with final paper details if available.
-
-BibTeX example:
+If you use MoveOD in academic work, please cite the project:
 
 ```bibtex
 @misc{sen2025moveodsynthesizingorigindestinationcommute,
@@ -180,58 +150,6 @@ BibTeX example:
 }
 ```
 
-## Troubleshooting & Performance
-
-**Streamlit Compatibility**: The tool automatically detects when running under Streamlit and uses appropriate logging for parallel processing.
-
-**Harmless Warning**: You may see this warning when using parallel processing in Streamlit:
-
-```
-WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext!
-This warning can be ignored when running in bare mode.
-```
-
-This is **expected and harmless** - it occurs because worker processes don't have access to Streamlit's context. The parallel processing still works correctly.
-
-**Force Sequential Mode**: If you prefer to disable parallel processing entirely, set:
-
-```bash
-export FORCE_SEQUENTIAL_OSM=true
-```
-
-**OSM API Timeouts**: OpenStreetMap queries may occasionally timeout due to API rate limiting. The tool includes:
-
-- Automatic retry logic with exponential backoff (2s, 4s, 8s)
-- Up to 3 retry attempts per section
-- Progress tracking with `tqdm` in sequential mode
-- Graceful fallback from parallel to sequential if issues occur
-
-If OSM queries consistently fail:
-
-1. Reduce the geographic area
-2. Run during off-peak hours
-3. Check your internet connection
-4. Wait a few minutes between retries if you've made many recent requests
-
-**General Issues**:
-
-- If the UI fails to start, check your Python environment and installed packages
-- If a job stalls, restart the streamlit app
-- For data problems (missing shapefiles, LODES files), place required files where the UI expects them
-
-<!--
-## Contributing (brief)
-
-Small, focused improvements are welcome. Open a GitHub issue to discuss larger changes first. For UI changes, update the Streamlit app files and add small tests or examples where appropriate. -->
-
-## Pipeline
-
-<p align="center">
-  <img src="files/moveod_plots.png" alt="Plots" width="800" />
-</p>
-
 ## License
 
-MIT — see the `LICENSE` file.
-
----
+MIT. See the `LICENSE` file.

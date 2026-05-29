@@ -13,6 +13,7 @@ import requests
 import gzip
 import os
 import shutil
+from tqdm import tqdm
 import zipfile
 import subprocess
 from io import StringIO

@@ -23,6 +23,7 @@ streamlit_folium==0.25.0
 # Utilities
 tqdm==4.64.0
 requests==2.31.0
+matplotlib==3.8.2
 
 # Parallel processing
 dask==2023.11.0
@@ -36,3 +37,5 @@ aiohttp==3.11.18
 
 python-dotenv==1.1.1
 scikit-learn==1.5.0
+ipykernel==6.29.0
+highspy==1.13.0
